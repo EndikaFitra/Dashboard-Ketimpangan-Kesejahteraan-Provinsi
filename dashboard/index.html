@@ -1439,24 +1439,6 @@ function renderCompareInfrastruktur(container, data) {
 
     bars.exit().remove();
 
-    // LABEL DI ATAS BAR 
-    const labels = groupEnter.merge(group)
-      .selectAll('.bar-label')
-      .data(d => d.values, d => d.key);
-
-    labels.enter()
-      .append('text')
-      .attr('class', 'bar-label')
-      .merge(labels)
-      .attr('x', (d, i) => i * (x.bandwidth() / keys.length) + (x.bandwidth() / keys.length) / 2)
-      .attr('y', d => y(d.value) - 5)
-      .attr('text-anchor', 'middle')
-      .style('font-size', '11px')
-      .style('fill', '#333')
-      .text(d => `${formatDecimal(d.value)}%`);
-
-    labels.exit().remove();
-
     xAxis.call(d3.axisBottom(x))
       .selectAll('text')
       .style('text-anchor', 'end')
@@ -1721,7 +1703,7 @@ function getClusterColor(cluster) {
     const chartWrap = content.append('div').attr('class', 'chart-wrap');
     const chartPie = createChartContainer(
         chartWrap,
-        'Distribusi Jumlah Provinsi per Cluster (Klik untuk Detail Provinsi)',
+        'Distribusi Jumlah Provinsi per Cluster',
         'chart-full'
     ).node();
 

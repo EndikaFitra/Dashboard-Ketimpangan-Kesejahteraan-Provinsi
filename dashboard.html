@@ -1,0 +1,1985 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Dashboard Ketimpangan Daerah Provinsi Indonesia</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root{
+            --bg:#f7fafc; --card:#ffffff; --muted:#64748b; --accent:#2563eb;
+            --good:#10b981; --bad:#ef4444; --neutral:#fcfdfd;
+        }
+        *{box-sizing:border-box}
+        body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:#0f172a}
+        .container{display:flex;min-height:100vh}
+        .sidebar{width:260px;padding:20px;background:linear-gradient(180deg,#1e40af,#2563eb);color:white;position:sticky;top:0;height:100vh}
+        .sidebar .logo div, 
+        .sidebar .small {color: #ffffff !important; opacity: 0.9}
+        .logo{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+        .logo .square{width:44px;height:44px;border-radius:8px;background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;font-weight:700}
+        .nav{margin-top:18px;display:flex;flex-direction:column;gap:8px}
+        .nav button{background:rgba(255,255,255,0.08);border:0;padding:10px;border-radius:10px;color:white;cursor:pointer;text-align:left;transition:background 0.2s}
+        .nav button:hover{background:rgba(255,255,255,0.15)}
+        .nav button.active{background:white;color:#1e40af;font-weight:600}
+        .main{flex:1;display:flex;flex-direction:column}
+        header{height:72px;background:var(--card);display:flex;align-items:center;padding:0 18px;border-bottom:1px solid #eef2ff;position:sticky;top:0;z-index:10}
+        .title{font-weight:800; font-size: 22px; color:var(--accent)}
+        .controls{margin-left:auto;display:flex;gap:8px;align-items:center}
+        input, select{padding:8px;border-radius:8px;border:1px solid #ffffff;font-size:14px}
+        .content{padding:18px;overflow-y:auto;padding-bottom:100px;}
+        .card{background:var(--card);border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 8px 30px rgba(14,30,80,0.06);transition:transform 0.2s}
+        .card:hover{transform:translateY(-2px);box-shadow:0 12px 35px rgba(255, 255, 255, 0.08)}
+        .card h3{margin:0 0 8px 0;font-size:16px}
+        .muted{color:var(--muted);font-size:13px}
+        .chart-wrap{display:flex;gap:12px;flex-wrap:wrap}
+        .chart-full{width:100%;min-height:400px}
+        .chart-half{width:calc(50% - 6px);min-height:360px}
+        .chart-third{width:calc(33.333% - 8px);min-height:300px}
+        .chart-quarter{width:calc(25% - 9px);min-height:280px}
+        .chart-card{display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;}
+        .controls-inline{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+        .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+        .legend .item{display:flex;gap:8px;align-items:center;font-size:13px}
+        .tooltip{position:fixed;pointer-events:none;background:var(--card);border-radius:8px;padding:8px 10px;font-size:13px;box-shadow:0 8px 30px rgba(11,36,99,0.12);border:1px solid rgba(17,24,39,0.05);z-index:50;display:none}
+        .small{font-size:12px;color:#ffffff !important;}
+        .data-card{flex:1;min-width:180px;background:#f8fafc;padding:12px;border-radius:8px;border:1px solid #e2e8f0}
+        .data-card .value{font-size:24px;font-weight:700;color:#1e40af}
+        .data-card .label{font-size:13px;color:var(--muted)}
+        .table-cluster table{width:100%;border-collapse:collapse;font-size:14px}
+        .table-cluster th, .table-cluster td{padding:10px;text-align:left;border-bottom:1px solid #f1f5f9}
+        .table-cluster th{background:#f8fafc;font-weight:600}
+        /* Warna Cluster untuk Tabel (dipertahankan) */
+        .cluster-0{background-color:#e6f0ff !important;}
+        .cluster-1{background-color:#e6ffe6 !important;}
+        .cluster-2{background-color:#fff0e6 !important;}
+        .cluster-3{background-color:#ffe6e6 !important;}
+        .cluster-4{background-color:#f5e6ff !important;}
+        .cluster-5{background-color:#fff5e6 !important;}
+        .cluster-6{background-color:#e6ffff !important;}
+        
+        @media(max-width:980px){
+            .sidebar{display:none}
+            .chart-half{width:100%}
+            .chart-third{width:100%}
+            .chart-quarter{width:100%}
+            .data-card{min-width:100%}
+            .global-legend{left:20px !important}
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="square">DB</div>
+                <div>
+                    <div style="font-weight:900">Gapify</div>
+                    <div class="small">Sumber Data @Badan Pusat Statistik</div>
+                </div>
+            </div>
+
+            <nav class="nav" aria-label="navigasi utama">
+                <button class="active" data-view="ekonomi">Ketimpangan Ekonomi & Kesejahteraan</button>
+                <button data-view="pendidikan">Pendidikan</button>
+                <button data-view="kesehatan">Kesehatan</button>
+                <button data-view="infrastruktur">Infrastruktur & Sanitasi</button>
+                <button data-view="pembangunan">Pembangunan Manusia</button>
+                <button data-view="kategori">Kategori Provinsi</button>
+            </nav>
+
+            <div style="margin-top:18px;font-size:13px;opacity:0.95">
+                <div class="small">gapify@info.com</div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header>
+                <div class="title">Dashboard Ketimpangan Kesejahteraan Provinsi di Indonesia Tahun 2024</div>
+                <div class="controls">
+                    <input id="searchProv" placeholder="Cari provinsi..." />
+                    <select id="selectProv"><option value="all">Semua Provinsi</option></select>
+                </div>
+            </header>
+
+            <section class="content" id="content">
+                </section>
+        </main>
+    </div>
+
+    <div id="global-legend" class="global-legend card" style="display:none;"></div>
+
+    <div id="tooltip" class="tooltip"></div>
+
+<script>
+/* ============================
+    DATA
+    ============================
+*/
+
+ const rawData = [
+            { "Provinsi": "Aceh", "Pendapatan per Kapita": 43782, "Persentase Pengangguran Terbuka": 5.75, "Indeks Pembangunan Manusia": 74.03, "Jumlah Penduduk Miskin": 804.53, "Gini Ratio": 0.294, "Persentase Rumah Tangga Sanitasi Layak ": 81.1, "Rata-rata Lama Sekolah": 9.64, "Angka Harapan Lama Sekolah": 14.39, "Angka Harapan Hidup": 70.485, "Akses Internet": 75.99, "Akses Listrik": 99.86, "Persentase Air Bersih": 90.08, "Indeks Pembangunan Literasi Masyarakat": 72.42, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 84.77, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 722434, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 542299, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 66, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 336, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 363, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 898, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 539, "Cluster": 3 },
+            { "Provinsi": "Sumatera Utara", "Pendapatan per Kapita": 73575, "Persentase Pengangguran Terbuka": 5.6, "Indeks Pembangunan Manusia": 74.02, "Jumlah Penduduk Miskin": 1228.01, "Gini Ratio": 0.306, "Persentase Rumah Tangga Sanitasi Layak ": 85.73, "Rata-rata Lama Sekolah": 9.93, "Angka Harapan Lama Sekolah": 13.49, "Angka Harapan Hidup": 70.33, "Akses Internet": 73.15, "Akses Listrik": 99.73, "Persentase Air Bersih": 92.94, "Indeks Pembangunan Literasi Masyarakat": 62.39, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 83.62, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 734270, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 606687, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 176, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 844, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 624, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 1811, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 867, "Cluster": 3 },
+            { "Provinsi": "Sumatera Barat", "Pendapatan per Kapita": 57047, "Persentase Pengangguran Terbuka": 5.75, "Indeks Pembangunan Manusia": 74.49, "Jumlah Penduduk Miskin": 345.73, "Gini Ratio": 0.287, "Persentase Rumah Tangga Sanitasi Layak ": 72.82, "Rata-rata Lama Sekolah": 9.44, "Angka Harapan Lama Sekolah": 14.3, "Angka Harapan Hidup": 70.38, "Akses Internet": 75.14, "Akses Listrik": 99.39, "Persentase Air Bersih": 86.85, "Indeks Pembangunan Literasi Masyarakat": 82.47, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 61.43, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 797728, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 683125, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 64, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 169, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 280, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 713, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 370, "Cluster": 5 },
+            { "Provinsi": "Riau", "Pendapatan per Kapita": 165350, "Persentase Pengangguran Terbuka": 3.7, "Indeks Pembangunan Manusia": 74.79, "Jumlah Penduduk Miskin": 492.25, "Gini Ratio": 0.306, "Persentase Rumah Tangga Sanitasi Layak ": 86.32, "Rata-rata Lama Sekolah": 9.43, "Angka Harapan Lama Sekolah": 13.42, "Angka Harapan Hidup": 72.57, "Akses Internet": 82.49, "Akses Listrik": 99.52, "Persentase Air Bersih": 92.24, "Indeks Pembangunan Literasi Masyarakat": 69.24, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 86.53, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 824229, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 738936, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 66, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 302, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 244, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 996, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 478, "Cluster": 5 },
+            { "Provinsi": "Jambi", "Pendapatan per Kapita": 86722, "Persentase Pengangguran Terbuka": 4.48, "Indeks Pembangunan Manusia": 73.43, "Jumlah Penduduk Miskin": 265.42, "Gini Ratio": 0.315, "Persentase Rumah Tangga Sanitasi Layak ": 83.97, "Rata-rata Lama Sekolah": 8.9, "Angka Harapan Lama Sekolah": 13.14, "Angka Harapan Hidup": 72.09, "Akses Internet": 85.91, "Akses Listrik": 99.58, "Persentase Air Bersih": 82.16, "Indeks Pembangunan Literasi Masyarakat": 65.43, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 87.93, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 773667, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 698833, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 39, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 75, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 208, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 581, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 307, "Cluster": 5 },
+            { "Provinsi": "Sumatera Selatan", "Pendapatan per Kapita": 75132, "Persentase Pengangguran Terbuka": 3.86, "Indeks Pembangunan Manusia": 72.3, "Jumlah Penduduk Miskin": 984.24, "Gini Ratio": 0.331, "Persentase Rumah Tangga Sanitasi Layak ": 82.36, "Rata-rata Lama Sekolah": 8.57, "Angka Harapan Lama Sekolah": 12.64, "Angka Harapan Hidup": 70.975, "Akses Internet": 74.62, "Akses Listrik": 99.61, "Persentase Air Bersih": 87.23, "Indeks Pembangunan Literasi Masyarakat": 72.24, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 83.39, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 711510, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 577490, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 73, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 246, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 348, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 809, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 400, "Cluster": 3 },
+            { "Provinsi": "Bengkulu", "Pendapatan per Kapita": 49233, "Persentase Pengangguran Terbuka": 3.11, "Indeks Pembangunan Manusia": 73.39, "Jumlah Penduduk Miskin": 281.36, "Gini Ratio": 0.343, "Persentase Rumah Tangga Sanitasi Layak ": 83.01, "Rata-rata Lama Sekolah": 9.04, "Angka Harapan Lama Sekolah": 13.75, "Angka Harapan Hidup": 70.18, "Akses Internet": 82.67, "Akses Listrik": 99.88, "Persentase Air Bersih": 72.1, "Indeks Pembangunan Literasi Masyarakat": 65.96, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 92.44, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 724415, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 691561, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 24, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 60, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 181, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 388, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 210, "Cluster": 5 },
+            { "Provinsi": "Lampung", "Pendapatan per Kapita": 51370, "Persentase Pengangguran Terbuka": 4.19, "Indeks Pembangunan Manusia": 71.81, "Jumlah Penduduk Miskin": 941.23, "Gini Ratio": 0.301, "Persentase Rumah Tangga Sanitasi Layak ": 85.44, "Rata-rata Lama Sekolah": 8.36, "Angka Harapan Lama Sekolah": 12.78, "Angka Harapan Hidup": 71.55, "Akses Internet": 77.75, "Akses Listrik": 99.94, "Persentase Air Bersih": 84.51, "Indeks Pembangunan Literasi Masyarakat": 64.81, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 93.38, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 656937, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 544537, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 61, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 411, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 323, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 859, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 670, "Cluster": 3 },
+            { "Provinsi": "Kepulauan Bangka Belitung", "Pendapatan per Kapita": 70194, "Persentase Pengangguran Terbuka": 4.63, "Indeks Pembangunan Manusia": 73.33, "Jumlah Penduduk Miskin": 69.95, "Gini Ratio": 0.235, "Persentase Rumah Tangga Sanitasi Layak ": 94.16, "Rata-rata Lama Sekolah": 8.33, "Angka Harapan Lama Sekolah": 12.49, "Angka Harapan Hidup": 71.535, "Akses Internet": 84.83, "Akses Listrik": 99.87, "Persentase Air Bersih": 82.97, "Indeks Pembangunan Literasi Masyarakat": 84.59, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 86.18, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 929142, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 863932, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 23, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 54, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 66, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 147, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 134, "Cluster": 5 },
+            { "Provinsi": "Kepulauan Riau", "Pendapatan per Kapita": 161424, "Persentase Pengangguran Terbuka": 6.39, "Indeks Pembangunan Manusia": 77.97, "Jumlah Penduduk Miskin": 138.3, "Gini Ratio": 0.357, "Persentase Rumah Tangga Sanitasi Layak ": 91.23, "Rata-rata Lama Sekolah": 10.5, "Angka Harapan Lama Sekolah": 13.27, "Angka Harapan Hidup": 71.285, "Akses Internet": 81.09, "Akses Listrik": 99.91, "Persentase Air Bersih": 94.71, "Indeks Pembangunan Literasi Masyarakat": 74.24, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 91.74, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 938634, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 1170437, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 26, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 71, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 96, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 225, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 97, "Cluster": 4 },
+            { "Provinsi": "DKI Jakarta", "Pendapatan per Kapita": 344350, "Persentase Pengangguran Terbuka": 6.21, "Indeks Pembangunan Manusia": 83.08, "Jumlah Penduduk Miskin": 464.93, "Gini Ratio": 0.431, "Persentase Rumah Tangga Sanitasi Layak ": 94.01, "Rata-rata Lama Sekolah": 11.49, "Angka Harapan Lama Sekolah": 13.51, "Angka Harapan Hidup": 74.18, "Akses Internet": 87.51, "Akses Listrik": 100, "Persentase Air Bersih": 99.96, "Indeks Pembangunan Literasi Masyarakat": 73.07, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 92.15, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 1108228, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 1686257, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 121, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 236, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 52, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 234, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 255, "Cluster": 4 },
+            { "Provinsi": "Jawa Barat", "Pendapatan per Kapita": 56080, "Persentase Pengangguran Terbuka": 6.75, "Indeks Pembangunan Manusia": 74.43, "Jumlah Penduduk Miskin": 3848.67, "Gini Ratio": 0.428, "Persentase Rumah Tangga Sanitasi Layak ": 75.1, "Rata-rata Lama Sekolah": 8.87, "Angka Harapan Lama Sekolah": 12.8, "Angka Harapan Hidup": 74.41, "Akses Internet": 85.52, "Akses Listrik": 99.99, "Persentase Air Bersih": 94.9, "Indeks Pembangunan Literasi Masyarakat": 72.76, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 91.66, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 803842, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 829190, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 346, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 1923, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 1110, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 1547, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 2589, "Cluster": 0 },
+            { "Provinsi": "Jawa Tengah", "Pendapatan per Kapita": 47972, "Persentase Pengangguran Terbuka": 4.78, "Indeks Pembangunan Manusia": 73.88, "Jumlah Penduduk Miskin": 3704.33, "Gini Ratio": 0.364, "Persentase Rumah Tangga Sanitasi Layak ": 86.72, "Rata-rata Lama Sekolah": 8.02, "Angka Harapan Lama Sekolah": 12.86, "Angka Harapan Hidup": 75.1, "Akses Internet": 81.32, "Akses Listrik": 99.99, "Persentase Air Bersih": 95.43, "Indeks Pembangunan Literasi Masyarakat": 70.57, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 97.27, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 647311, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 624368, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 317, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 1295, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 888, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 1697, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 2903, "Cluster": 0 },
+            { "Provinsi": "DI Yogyakarta", "Pendapatan per Kapita": 51473, "Persentase Pengangguran Terbuka": 3.48, "Indeks Pembangunan Manusia": 81.55, "Jumlah Penduduk Miskin": 445.55, "Gini Ratio": 0.428, "Persentase Rumah Tangga Sanitasi Layak ": 96.71, "Rata-rata Lama Sekolah": 9.92, "Angka Harapan Lama Sekolah": 15.7, "Angka Harapan Hidup": 75.53, "Akses Internet": 88.73, "Akses Listrik": 100, "Persentase Air Bersih": 96.91, "Indeks Pembangunan Literasi Masyarakat": 86.39, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 92.46, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 748182, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 1010683, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 66, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 158, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 122, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 229, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 254, "Cluster": 4 },
+            { "Provinsi": "Jawa Timur", "Pendapatan per Kapita": 75770, "Persentase Pengangguran Terbuka": 4.19, "Indeks Pembangunan Manusia": 74.09, "Jumlah Penduduk Miskin": 3982.69, "Gini Ratio": 0.373, "Persentase Rumah Tangga Sanitasi Layak ": 85.56, "Rata-rata Lama Sekolah": 8.28, "Angka Harapan Lama Sekolah": 13.43, "Angka Harapan Hidup": 72.395, "Akses Internet": 81.79, "Akses Listrik": 100, "Persentase Air Bersih": 96.93, "Indeks Pembangunan Literasi Masyarakat": 78.6, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 95.76, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 689148, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 667796, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 341, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 1327, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 984, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 2218, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 2628, "Cluster": 0 },
+            { "Provinsi": "Banten", "Pendapatan per Kapita": 70276, "Persentase Pengangguran Terbuka": 6.68, "Indeks Pembangunan Manusia": 74.48, "Jumlah Penduduk Miskin": 791.61, "Gini Ratio": 0.359, "Persentase Rumah Tangga Sanitasi Layak ": 87.93, "Rata-rata Lama Sekolah": 9.23, "Angka Harapan Lama Sekolah": 13.1, "Angka Harapan Hidup": 71.065, "Akses Internet": 84.55, "Akses Listrik": 99.84, "Persentase Air Bersih": 94.01, "Indeks Pembangunan Literasi Masyarakat": 61.88, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 92.73, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 873268, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 898894, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 106, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 537, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 252, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 220, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 526, "Cluster": 4 },
+            { "Provinsi": "Bali", "Pendapatan per Kapita": 67319, "Persentase Pengangguran Terbuka": 1.79, "Indeks Pembangunan Manusia": 77.76, "Jumlah Penduduk Miskin": 184.43, "Gini Ratio": 0.348, "Persentase Rumah Tangga Sanitasi Layak ": 96.83, "Rata-rata Lama Sekolah": 9.54, "Angka Harapan Lama Sekolah": 13.62, "Angka Harapan Hidup": 73.34, "Akses Internet": 85.47, "Akses Listrik": 99.96, "Persentase Air Bersih": 98.32, "Indeks Pembangunan Literasi Masyarakat": 66.05, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 91.61, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 804982, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 1067778, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 59, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 141, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 120, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 480, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 308, "Cluster": 5 },
+            { "Provinsi": "Nusa Tenggara Barat", "Pendapatan per Kapita": 32282, "Persentase Pengangguran Terbuka": 2.73, "Indeks Pembangunan Manusia": 70.93, "Jumlah Penduduk Miskin": 709.01, "Gini Ratio": 0.364, "Persentase Rumah Tangga Sanitasi Layak ": 86.8, "Rata-rata Lama Sekolah": 7.87, "Angka Harapan Lama Sekolah": 13.98, "Angka Harapan Hidup": 67.78, "Akses Internet": 66.11, "Akses Listrik": 99.98, "Persentase Air Bersih": 96.13, "Indeks Pembangunan Literasi Masyarakat": 60.42, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 84.47, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 730071, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 547068, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 42, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 103, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 178, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 550, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 433, "Cluster": 6 },
+            { "Provinsi": "Nusa Tenggara Timur", "Pendapatan per Kapita": 24272, "Persentase Pengangguran Terbuka": 3.02, "Indeks Pembangunan Manusia": 67.39, "Jumlah Penduduk Miskin": 1127.57, "Gini Ratio": 0.316, "Persentase Rumah Tangga Sanitasi Layak ": 77.66, "Rata-rata Lama Sekolah": 8.02, "Angka Harapan Lama Sekolah": 13.23, "Angka Harapan Hidup": 68.035, "Akses Internet": 67.75, "Akses Listrik": 96.82, "Persentase Air Bersih": 88.55, "Indeks Pembangunan Literasi Masyarakat": 62.62, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 86.56, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 541265, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 434589, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 65, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 119, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 442, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 1050, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 296, "Cluster": 6 },
+            { "Provinsi": "Kalimantan Barat", "Pendapatan per Kapita": 52703, "Persentase Pengangguran Terbuka": 4.86, "Indeks Pembangunan Manusia": 70.13, "Jumlah Penduduk Miskin": 336.08, "Gini Ratio": 0.314, "Persentase Rumah Tangga Sanitasi Layak ": 81.56, "Rata-rata Lama Sekolah": 7.78, "Angka Harapan Lama Sekolah": 12.68, "Angka Harapan Hidup": 71.6, "Akses Internet": 79.03, "Akses Listrik": 99.08, "Persentase Air Bersih": 82.13, "Indeks Pembangunan Literasi Masyarakat": 75.15, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 86.02, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 735785, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 652292, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 45, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 106, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 248, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 776, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 222, "Cluster": 5 },
+            { "Provinsi": "Kalimantan Tengah", "Pendapatan per Kapita": 79320, "Persentase Pengangguran Terbuka": 4.01, "Indeks Pembangunan Manusia": 72.73, "Jumlah Penduduk Miskin": 145.63, "Gini Ratio": 0.304, "Persentase Rumah Tangga Sanitasi Layak ": 78.15, "Rata-rata Lama Sekolah": 8.81, "Angka Harapan Lama Sekolah": 12.77, "Angka Harapan Hidup": 70.475, "Akses Internet": 82.4, "Akses Listrik": 99.26, "Persentase Air Bersih": 78.71, "Indeks Pembangunan Literasi Masyarakat": 72.5, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 90.39, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 835243, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 755448, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 27, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 96, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 211, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 1096, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 137, "Cluster": 5 },
+            { "Provinsi": "Kalimantan Selatan", "Pendapatan per Kapita": 67117, "Persentase Pengangguran Terbuka": 4.2, "Indeks Pembangunan Manusia": 73.03, "Jumlah Penduduk Miskin": 183.31, "Gini Ratio": 0.298, "Persentase Rumah Tangga Sanitasi Layak ": 83.7, "Rata-rata Lama Sekolah": 8.62, "Angka Harapan Lama Sekolah": 12.87, "Angka Harapan Hidup": 69.695, "Akses Internet": 71.76, "Akses Listrik": 99.92, "Persentase Air Bersih": 77.34, "Indeks Pembangunan Literasi Masyarakat": 81.16, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 86.88, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 799948, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 734092, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 42, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 137, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 243, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 406, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 266, "Cluster": 5 },
+            { "Provinsi": "Kalimantan Timur", "Pendapatan per Kapita": 212175, "Persentase Pengangguran Terbuka": 5.14, "Indeks Pembangunan Manusia": 78.83, "Jumlah Penduduk Miskin": 221.34, "Gini Ratio": 0.31, "Persentase Rumah Tangga Sanitasi Layak ": 91.65, "Rata-rata Lama Sekolah": 10.02, "Angka Harapan Lama Sekolah": 14.03, "Angka Harapan Hidup": 75.055, "Akses Internet": 80.63, "Akses Listrik": 99.98, "Persentase Air Bersih": 89.11, "Indeks Pembangunan Literasi Masyarakat": 78.34, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 90.68, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 925954, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 1116838, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 46, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 161, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 185, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 741, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 269, "Cluster": 4 },
+            { "Provinsi": "Kalimantan Utara", "Pendapatan per Kapita": 198429, "Persentase Pengangguran Terbuka": 3.9, "Indeks Pembangunan Manusia": 73.02, "Jumlah Penduduk Miskin": 47.83, "Gini Ratio": 0.259, "Persentase Rumah Tangga Sanitasi Layak ": 85.17, "Rata-rata Lama Sekolah": 9.35, "Angka Harapan Lama Sekolah": 13.21, "Angka Harapan Hidup": 72.775, "Akses Internet": 66.69, "Akses Listrik": 99.49, "Persentase Air Bersih": 89.42, "Indeks Pembangunan Literasi Masyarakat": 66.73, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 90.26, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 833209, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 824833, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 15, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 26, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 60, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 221, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 68, "Cluster": 5 },
+            { "Provinsi": "Sulawesi Utara", "Pendapatan per Kapita": 69352, "Persentase Pengangguran Terbuka": 5.85, "Indeks Pembangunan Manusia": 75.03, "Jumlah Penduduk Miskin": 186.86, "Gini Ratio": 0.347, "Persentase Rumah Tangga Sanitasi Layak ": 87.31, "Rata-rata Lama Sekolah": 9.84, "Angka Harapan Lama Sekolah": 12.97, "Angka Harapan Hidup": 72.745, "Akses Internet": 74.2, "Akses Listrik": 99.87, "Persentase Air Bersih": 94.46, "Indeks Pembangunan Literasi Masyarakat": 62.54, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 85.21, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 717919, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 664510, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 54, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 64, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 208, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 420, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 258, "Cluster": 5 },
+            { "Provinsi": "Sulawesi Tengah", "Pendapatan per Kapita": 120750, "Persentase Pengangguran Terbuka": 2.94, "Indeks Pembangunan Manusia": 71.56, "Jumlah Penduduk Miskin": 379.76, "Gini Ratio": 0.309, "Persentase Rumah Tangga Sanitasi Layak ": 77.4, "Rata-rata Lama Sekolah": 9.04, "Angka Harapan Lama Sekolah": 13.34, "Angka Harapan Hidup": 69.465, "Akses Internet": 60.47, "Akses Listrik": 99.27, "Persentase Air Bersih": 87.86, "Indeks Pembangunan Literasi Masyarakat": 71.7, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 84.42, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 644418, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 587035, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 36, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 60, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 221, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 659, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 316, "Cluster": 6 },
+            { "Provinsi": "Sulawesi Selatan", "Pendapatan per Kapita": 73573, "Persentase Pengangguran Terbuka": 4.19, "Indeks Pembangunan Manusia": 74.05, "Jumlah Penduduk Miskin": 736.48, "Gini Ratio": 0.36, "Persentase Rumah Tangga Sanitasi Layak ": 93.83, "Rata-rata Lama Sekolah": 8.86, "Angka Harapan Lama Sekolah": 13.55, "Angka Harapan Hidup": 71.48, "Akses Internet": 71.81, "Akses Listrik": 99.73, "Persentase Air Bersih": 92.23, "Indeks Pembangunan Literasi Masyarakat": 88.24, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 75.08, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 636655, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 646426, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 101, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 239, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 475, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 1324, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 794, "Cluster": 3 },
+            { "Provinsi": "Sulawesi Tenggara", "Pendapatan per Kapita": 67840, "Persentase Pengangguran Terbuka": 3.09, "Indeks Pembangunan Manusia": 73.48, "Jumlah Penduduk Miskin": 319.71, "Gini Ratio": 0.365, "Persentase Rumah Tangga Sanitasi Layak ": 90.62, "Rata-rata Lama Sekolah": 9.42, "Angka Harapan Lama Sekolah": 13.71, "Angka Harapan Hidup": 71.65, "Akses Internet": 64.05, "Akses Listrik": 99.89, "Persentase Air Bersih": 95.31, "Indeks Pembangunan Literasi Masyarakat": 72.31, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 91.56, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 604047, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 623116, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 33, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 46, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 309, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 417, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 344, "Cluster": 6 },
+            { "Provinsi": "Gorontalo", "Pendapatan per Kapita": 44433, "Persentase Pengangguran Terbuka": 3.13, "Indeks Pembangunan Manusia": 71.23, "Jumlah Penduduk Miskin": 177.99, "Gini Ratio": 0.413, "Persentase Rumah Tangga Sanitasi Layak ": 82.99, "Rata-rata Lama Sekolah": 8.29, "Angka Harapan Lama Sekolah": 13.17, "Angka Harapan Hidup": 69.14, "Akses Internet": 64.36, "Akses Listrik": 99.7, "Persentase Air Bersih": 96.13, "Indeks Pembangunan Literasi Masyarakat": 77.46, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 91.99, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 620823, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 641446, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 19, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 79, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 95, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 211, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 117, "Cluster": 6 },
+            { "Provinsi": "Sulawesi Barat", "Pendapatan per Kapita": 42718, "Persentase Pengangguran Terbuka": 2.68, "Indeks Pembangunan Manusia": 68.2, "Jumlah Penduduk Miskin": 162.19, "Gini Ratio": 0.33, "Persentase Rumah Tangga Sanitasi Layak ": 82.52, "Rata-rata Lama Sekolah": 8.15, "Angka Harapan Lama Sekolah": 12.89, "Angka Harapan Hidup": 66.32, "Akses Internet": 59.11, "Akses Listrik": 99.61, "Persentase Air Bersih": 80.14, "Indeks Pembangunan Literasi Masyarakat": 63.65, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 87.62, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 579734, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 529855, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 12, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 18, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 100, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 344, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 98, "Cluster": 6 },
+            { "Provinsi": "Maluku", "Pendapatan per Kapita": 32198, "Persentase Pengangguran Terbuka": 6.11, "Indeks Pembangunan Manusia": 71.57, "Jumlah Penduduk Miskin": 297.68, "Gini Ratio": 0.291, "Persentase Rumah Tangga Sanitasi Layak ": 80.51, "Rata-rata Lama Sekolah": 10.26, "Angka Harapan Lama Sekolah": 14.09, "Angka Harapan Hidup": 67.005, "Akses Internet": 65.68, "Akses Listrik": 97.25, "Persentase Air Bersih": 93.32, "Indeks Pembangunan Literasi Masyarakat": 58.55, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 71.82, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 640897, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 636672, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 31, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 35, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 237, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 463, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 93, "Cluster": 6 },
+            { "Provinsi": "Maluku Utara", "Pendapatan per Kapita": 70660, "Persentase Pengangguran Terbuka": 4.03, "Indeks Pembangunan Manusia": 71.03, "Jumlah Penduduk Miskin": 83.09, "Gini Ratio": 0.296, "Persentase Rumah Tangga Sanitasi Layak ": 82.32, "Rata-rata Lama Sekolah": 9.37, "Angka Harapan Lama Sekolah": 13.75, "Angka Harapan Hidup": 69.32, "Akses Internet": 68.45, "Akses Listrik": 98.72, "Persentase Air Bersih": 88.92, "Indeks Pembangunan Literasi Masyarakat": 61.7, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 87.83, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 726547, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 720763, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 23, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 21, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 153, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 287, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 121, "Cluster": 6 },
+            { "Provinsi": "Papua Barat", "Pendapatan per Kapita": 131636, "Persentase Pengangguran Terbuka": 4.13, "Indeks Pembangunan Manusia": 67.02, "Jumlah Penduduk Miskin": 110.16, "Gini Ratio": 0.385, "Persentase Rumah Tangga Sanitasi Layak ": 79, "Rata-rata Lama Sekolah": 7.86, "Angka Harapan Lama Sekolah": 13.17, "Angka Harapan Hidup": 67.1, "Akses Internet": 75.5, "Akses Listrik": 96.3, "Persentase Air Bersih": 82.38, "Indeks Pembangunan Literasi Masyarakat": 65.86, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 61.06, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 836642, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 806846, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 11, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 13, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 91, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 214, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 53, "Cluster": 1 },
+            { "Provinsi": "Papua Barat Daya", "Pendapatan per Kapita": 59064, "Persentase Pengangguran Terbuka": 6.48, "Indeks Pembangunan Manusia": 68.63, "Jumlah Penduduk Miskin": 102.27, "Gini Ratio": 0.347, "Persentase Rumah Tangga Sanitasi Layak ": 77.84, "Rata-rata Lama Sekolah": 8.39, "Angka Harapan Lama Sekolah": 13.88, "Angka Harapan Hidup": 67.85, "Akses Internet": 74.43, "Akses Listrik": 98.05, "Persentase Air Bersih": 81.68, "Indeks Pembangunan Literasi Masyarakat": 54.14, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 65.81, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 810863, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 831867, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 12, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 15, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 104, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 202, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 58, "Cluster": 1 },
+            { "Provinsi": "Papua", "Pendapatan per Kapita": 81009, "Persentase Pengangguran Terbuka": 6.48, "Indeks Pembangunan Manusia": 73, "Jumlah Penduduk Miskin": 152.91, "Gini Ratio": 0.405, "Persentase Rumah Tangga Sanitasi Layak ": 80.57, "Rata-rata Lama Sekolah": 9.82, "Angka Harapan Lama Sekolah": 13.72, "Angka Harapan Hidup": 68.775, "Akses Internet": 74.11, "Akses Listrik": 96.06, "Persentase Air Bersih": 85.84, "Indeks Pembangunan Literasi Masyarakat": 60.75, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 66.56, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 765393, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 813501, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 17, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 21, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 125, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 310, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 79, "Cluster": 1 },
+            { "Provinsi": "Papua Selatan", "Pendapatan per Kapita": 61583, "Persentase Pengangguran Terbuka": 4.05, "Indeks Pembangunan Manusia": 67.9, "Jumlah Penduduk Miskin": 92.2, "Gini Ratio": 0.424, "Persentase Rumah Tangga Sanitasi Layak ": 60.85, "Rata-rata Lama Sekolah": 8.38, "Angka Harapan Lama Sekolah": 12.67, "Angka Harapan Hidup": 66.475, "Akses Internet": 74.43, "Akses Listrik": 80.61, "Persentase Air Bersih": 71.9, "Indeks Pembangunan Literasi Masyarakat": 49.78, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 51.52, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 749474, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 677616, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 9, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 16, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 88, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 246, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 26, "Cluster": 1 },
+            { "Provinsi": "Papua Tengah", "Pendapatan per Kapita": 118774, "Persentase Pengangguran Terbuka": 2.75, "Indeks Pembangunan Manusia": 59.75, "Jumlah Penduduk Miskin": 308.48, "Gini Ratio": 0.355, "Persentase Rumah Tangga Sanitasi Layak ": 41.44, "Rata-rata Lama Sekolah": 6.12, "Angka Harapan Lama Sekolah": 9.63, "Angka Harapan Hidup": 67.01, "Akses Internet": 73.28, "Akses Listrik": 56.08, "Persentase Air Bersih": 81.53, "Indeks Pembangunan Literasi Masyarakat": 48.93, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 26.56, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 887039, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 600649, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 14, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 24, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 98, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 148, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 45, "Cluster": 2 },
+            { "Provinsi": "Papua Pegunungan", "Pendapatan per Kapita": 18105, "Persentase Pengangguran Terbuka": 1.32, "Indeks Pembangunan Manusia": 53.42, "Jumlah Penduduk Miskin": 365.44, "Gini Ratio": 0.346, "Persentase Rumah Tangga Sanitasi Layak ": 12.61, "Rata-rata Lama Sekolah": 4.21, "Angka Harapan Lama Sekolah": 9.97, "Angka Harapan Hidup": 64.755, "Akses Internet": 57.3, "Akses Listrik": 73.66, "Persentase Air Bersih": 30.64, "Indeks Pembangunan Literasi Masyarakat": 35.25, "Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri": 3.72, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan": 1157571, "Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan": 570904, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit": 9, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik": 12, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas": 148, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu": 246, "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek": 8, "Cluster": 2 }
+        ];
+
+       rawData.forEach(d => {
+    // Pengeluaran makanan & non-makanan
+    d.Pengeluaran_Makanan_Total = d["Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Makanan"];
+    d.Pengeluaran_BukanMakanan_Total = d["Rata-rata Pengeluaran per Kapita Sebulan di Perkotaan dan Perdesaan - Bukan Makanan"];
+    // Total Fasilitas Kesehatan 
+    d.Total_Fasilitas_Kesehatan = 
+        d["Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit"] +
+        d["Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik"] +
+        d["Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas"] +
+        d["Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu"] +
+        d["Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek"];
+});
+/* -------------------------------------------------------- */
+
+/* ============================
+ * KONSTANTA & UTILITY 
+ * ============================
+*/
+// Warna Cluster Konsisten
+const CLUSTER_COLORS = {
+    0: '#1f77b4', // Biru tua
+    1: '#2ca02c', // Hijau tua
+    2: '#ff7f0e', // Oranye
+    3: '#d62728', // Merah tua
+    4: '#9467bd', // Ungu
+    5: '#8c564b', // Cokelat
+    6: '#17becf' // Biru muda
+};
+const getClusterColor = (cluster) => CLUSTER_COLORS[cluster] || '#ccc';
+
+// Konstanta Visualisasi
+const CHART_MARGINS = { top: 30, right: 30, bottom: 80, left: 120 }; 
+const COLOR_BASE = '#2563eb'; // Biru (warna dasar)
+const COLOR_HIGHLIGHT = '#ef4444'; // Merah (tertinggi)
+const BAR_PADDING = 0.4; // Padding untuk bar
+
+const content = d3.select('#content');
+let currentView = 'ekonomi';
+
+/* Formatters */
+const formatNumber = d3.format(',.0f');
+const formatRupiah = (num) => `Rp ${formatNumber(num)}`;
+const formatPercent = d3.format('.1f');
+const formatDecimal = d3.format('.2f');
+const formatInteger = d3.format(',.0f');
+
+/* Tooltip Helpers */
+const tooltip = d3.select('#tooltip');
+function showTooltip(html, event){
+    tooltip.style('display','block').html(html);
+    moveTooltip(event);
+}
+function moveTooltip(event){
+    const tt = document.getElementById('tooltip');
+    const x = (event.pageX + 12);
+    const y = Math.max(12, event.pageY - 12);
+    tooltip.style('left', x + 'px').style('top', y + 'px');
+}
+function hideTooltip(){ tooltip.style('display','none'); }
+
+
+/* Chart and Layout Helpers */
+function clearContent(){ content.html(''); hideTooltip(); }
+
+function createChartContainer(parent, title, className = 'chart-full') {
+    const card = parent.append('div').attr('class', 'card ' + className);
+    card.append('h3').text(title);
+    return card.append('div').attr('class', 'chart').style('min-height', className.includes('half') ? '600px' : '400px');
+}
+
+function renderGlobalLegend(selection) {
+    selection.style('display', 'block');
+    selection.html(''); // Clear previous content
+    selection.append('div').style('font-weight','600').text('Legenda Global Warna Cluster (0–6):');
+    const legendContainer = selection.append('div').attr('class', 'legend');
+    
+    Object.entries(CLUSTER_COLORS).forEach(([cluster, color]) => {
+        legendContainer.append('div')
+            .attr('class', 'item')
+            .style('display', 'inline-flex')
+            .style('align-items', 'center')
+            .style('margin-right', '15px')
+            .style('margin-bottom', '5px')
+            .html(`<span style="background-color:${color};width:12px;height:12px;border-radius:4px;display:inline-block;margin-right:5px;"></span> Cluster ${cluster}`);
+    });
+
+}
+
+/* ============================
+ * NAVIGASI & INITIAL RENDER
+ * ============================
+*/
+d3.selectAll('.nav button').on('click', function(){
+    d3.selectAll('.nav button').classed('active', false);
+    d3.select(this).classed('active', true);
+    const view = this.dataset.view;
+    renderView(view);
+});
+
+d3.select('#searchProv').on('input', function(){
+    const val = this.value.trim().toLowerCase();
+    const matched = rawData.filter(d => d.Provinsi.toLowerCase().includes(val));
+
+    if (matched.length === 1) {
+        d3.select('#selectProv').property('value', matched[0].Provinsi);
+    } else {
+        d3.select('#selectProv').property('value', 'all');
+    }
+
+    renderCurrentView(); // render langsung berdasarkan hasil pencarian
+});
+
+d3.select('#selectProv').on('change', function(){ renderCurrentView(); });
+
+// Populate select dropdown
+const selectProv = d3.select('#selectProv');
+selectProv.selectAll('option.prov').remove();
+selectProv.append('option').attr('value','all').text('Semua Provinsi');
+rawData.forEach(d=> selectProv.append('option').attr('value', d.Provinsi).text(d.Provinsi) );
+
+
+
+
+function renderView(viewName){
+    currentView = viewName;
+    clearContent();
+
+    // Ambil provinsi yang dipilih
+    const sel = d3.select('#selectProv').property('value');
+
+    // Filter data sesuai pilihan
+    let filteredData = rawData;
+    if (sel !== 'all') {
+        filteredData = rawData.filter(d => d.Provinsi === sel);
+    }
+
+    // Panggil fungsi render sesuai view
+    if(viewName === 'ekonomi'){
+        renderEkonomi(filteredData, sel);
+    } else if(viewName === 'pendidikan'){
+        renderPendidikan(filteredData, sel);
+    } else if(viewName === 'kesehatan'){
+        renderKesehatan(filteredData, sel);
+    } else if(viewName === 'infrastruktur'){
+        renderInfrastruktur(filteredData, sel);
+    } else if(viewName === 'pembangunan'){
+        renderPembangunanManusia(filteredData, sel);
+    } else if(viewName === 'kategori'){
+        renderKategoriProvinsi(filteredData, sel);
+    }
+
+    // Render Global Legend di bawah
+    d3.select('#global-legend').call(renderGlobalLegend);
+}
+
+
+function renderCurrentView(){ renderView(currentView); }
+
+// Initial render
+renderView('ekonomi'); 
+
+/* ======================================================================================
+ * 1. KETIMPANGAN EKONOMI & KESEJAHTERAAN 
+ * ====================================================================================== */
+function renderEkonomi(data, filterProv){
+    content.append('h2').text('Ketimpangan Ekonomi & Kesejahteraan').style('margin-top','0');
+
+    const allData = data.slice();
+
+    // 1. Card Statistik Ringkas (DIPINDAH KE ATAS)
+    const avgPengangguran = d3.mean(allData, d => d['Persentase Pengangguran Terbuka']);
+    const totalMiskin = d3.sum(allData, d => d['Jumlah Penduduk Miskin']); // Dalam Ribuan Orang
+    const avgKepemilikanRumah = d3.mean(allData, d => d['Persentase Rumah Tangga dengan Status Kepemilikan Bangunan Sendiri']);
+
+    const statsCard = content.append('div').attr('class','card').style('margin-bottom','20px');
+    statsCard.append('h3').text('Statistik Ringkasan');
+    const statsRow = statsCard.append('div').style('display','flex').style('gap','12px').style('flex-wrap','wrap');
+    
+    statsRow.append('div').attr('class','data-card')
+        .html(`<div class="value">${formatPercent(avgPengangguran)}%</div><div class="label">Rata-rata Persenatse Pengangguran Terbuka</div>`);
+    statsRow.append('div').attr('class','data-card')
+        .html(`<div class="value">${formatDecimal(totalMiskin / 1000)} Juta</div><div class="label">Total Penduduk Miskin (Ribuan)</div>`);
+    statsRow.append('div').attr('class','data-card')
+        .html(`<div class="value">${formatPercent(avgKepemilikanRumah)}%</div><div class="label">Rata-rata Persentase Kepemilikan Rumah Sendiri</div>`);
+    
+    // Chart Wrap
+    const chartWrap = content.append('div').attr('class', 'chart-wrap');
+
+
+    // 2. Bar Chart Vertikal – Pendapatan per Kapita 
+    const chartPendapatan = createChartContainer(chartWrap, 'Pendapatan per Kapita (Top 10)', 'chart-half').node();
+    renderPendapatanBarChart(d3.select(chartPendapatan), allData);
+
+    // 3. Stacked Bar Chart – Pengeluaran Makanan vs Non-Makanan 
+    const chartPengeluaran = createChartContainer(chartWrap, 'Pengeluaran Makanan vs Non-Makanan (Top 15 Total Pengeluaran)', 'chart-half').node();
+    renderPengeluaranStackedChart(d3.select(chartPengeluaran), allData);
+
+    // 4. Horizontal Bar Chart – Gini Ratio
+    const chartGini = createChartContainer(content.append('div').attr('class','card'), 'Gini Ratio (Ketimpangan) Terburuk', 'chart-full').node();
+    renderGiniHorizontalChart(d3.select(chartGini), allData);
+}
+
+// Vis 1.1: Pendapatan per Kapita Bar Chart
+function renderPendapatanBarChart(container, data) {
+    const sortedData = data.slice().sort((a, b) => b['Pendapatan per Kapita'] - a['Pendapatan per Kapita']).slice(0, 10); // Top 10
+    const highestValue = sortedData[0]['Pendapatan per Kapita'];
+
+    const margin = CHART_MARGINS;
+    const width = container.node().clientWidth - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Scales
+    const x = d3.scaleBand()
+        .domain(sortedData.map(d => d.Provinsi))
+        .range([0, width])
+        .padding(BAR_PADDING);
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(sortedData, d => d['Pendapatan per Kapita']) * 1.1])
+        .range([height, 0]);
+
+    // X-Axis
+    svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x))
+        .selectAll('text')
+        .attr('transform', 'rotate(-45)')
+        .style('text-anchor', 'end')
+        .style('font-size', '12px')
+        .style('fill', 'var(--muted)');
+
+    // Y-Axis
+    svg.append('g')
+        .call(d3.axisLeft(y).tickFormat(d => {
+             // Simplify format for Y-axis (Pendapatan per Kapita)
+             if (d >= 100000) return `${formatInteger(d / 1000)}K`;
+             return formatInteger(d);
+        }))
+        .style('font-size', '12px')
+        .style('fill', 'var(--muted)');
+
+    // Bars
+    svg.selectAll('.bar')
+        .data(sortedData)
+        .enter().append('rect')
+        .attr('class', d => `bar cluster-${d.Cluster}`)
+        .attr('x', d => x(d.Provinsi))
+        .attr('y', d => y(d['Pendapatan per Kapita']))
+        .attr('width', x.bandwidth())
+        .attr('height', d => height - y(d['Pendapatan per Kapita']))
+        .attr('fill', d => d['Pendapatan per Kapita'] === highestValue ? COLOR_HIGHLIGHT : COLOR_BASE)
+        .on('mouseover', function(event, d) {
+            d3.select(this).style('opacity', 0.8);
+            showTooltip(`
+                <strong>${d.Provinsi} (Cluster ${d.Cluster})</strong><br/>
+                Pendapatan per Kapita: <strong>${formatRupiah(d['Pendapatan per Kapita'])}</strong>
+            `, event);
+        })
+        .on('mousemove', moveTooltip)
+        .on('mouseout', function() {
+            d3.select(this).style('opacity', 1);
+            hideTooltip();
+        });
+
+    // Axis Labels
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('transform', `translate(-${margin.left / 2},${height / 2})rotate(-90)`)
+        .text('Pendapatan per Kapita (Ribuan Rupiah)')
+        .style('fill', '#0f172a');
+
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('transform', `translate(${width / 2},${height + margin.bottom - 10})`)
+        .text('Provinsi')
+        .style('fill', '#0f172a');
+}
+
+// Vis 1.2: Pengeluaran Stacked Bar Chart (Horizontal)
+function renderPengeluaranStackedChart(container, data) {
+    const keys = ['Pengeluaran_Makanan_Total', 'Pengeluaran_BukanMakanan_Total'];
+    const margin = CHART_MARGINS;
+    const width = container.node().clientWidth - margin.left - margin.right;
+    const height = 600 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Calculate total expenditure for sorting
+    data.forEach(d => {
+        d.total = d.Pengeluaran_Makanan_Total + d.Pengeluaran_BukanMakanan_Total;
+    });
+    const sortedData = data.slice().sort((a, b) => b.total - a.total).slice(0, 15); // Top 15
+
+    // Stack data
+    const stack = d3.stack().keys(keys).order(d3.stackOrderNone).offset(d3.stackOffsetNone);
+    const series = stack(sortedData);
+
+    // Scales (Horizontal Bar Chart)
+    const x = d3.scaleLinear()
+        .domain([0, d3.max(sortedData, d => d.total) * 1.1])
+        .range([0, width]);
+
+    const y = d3.scaleBand()
+        .domain(sortedData.map(d => d.Provinsi))
+        .range([0, height])
+        .padding(BAR_PADDING);
+
+    const color = d3.scaleOrdinal()
+        .domain(keys)
+        .range(['#10b981', '#3b82f6']); // Warna Pengeluaran
+
+    // Bars
+    svg.append('g')
+        .selectAll('g')
+        .data(series)
+        .join('g')
+        .attr('fill', d => color(d.key))
+        .selectAll('rect')
+        .data(d => d)
+        .join('rect')
+        .attr('x', d => x(d[0]))
+        .attr('y', d => y(d.data.Provinsi))
+        .attr('height', y.bandwidth())
+        .attr('width', d => x(d[1]) - x(d[0]))
+        .on('mouseover', function(event, d) {
+            const category = d3.select(this.parentNode).datum().key;
+            d3.select(this).style('opacity', 0.8);
+            showTooltip(`
+                <strong>${d.data.Provinsi}</strong><br/>
+                ${category.replace('_Total', '').replace('_', ' ')}: <strong>${formatRupiah(d.data[category])}</strong><br/>
+                Total: ${formatRupiah(d.data.total)}
+            `, event);
+        })
+        .on('mousemove', moveTooltip)
+        .on('mouseout', function() {
+            d3.select(this).style('opacity', 1);
+            hideTooltip();
+        });
+
+    // X-Axis (Bottom)
+    svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x).tickFormat(d => {
+             if (d >= 1000000) return `${formatDecimal(d / 1000000)} Juta`;
+             if (d >= 1000) return `${formatInteger(d / 1000)}K`;
+             return formatInteger(d);
+        }))
+        .selectAll('text')
+        .attr('transform', 'rotate(-45)')
+        .style('text-anchor', 'end')
+        .style('font-size', '12px')
+        .style('fill', 'var(--muted)');
+
+    // Y-Axis (Left)
+    svg.append('g')
+        .call(d3.axisLeft(y))
+        .style('font-size', '12px')
+        .style('fill', 'var(--muted)');
+
+    // X-Axis Label
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('transform', `translate(${width / 2},${height + margin.bottom - 10})`)
+        .text('Total Pengeluaran (Rupiah)')
+        .style('fill', '#0f172a');
+
+    // Legend
+    const legend = container.select('.chart').append('div').attr('class', 'legend').style('margin-top', '15px');
+    keys.forEach((key, i) => {
+        legend.append('div').attr('class', 'item')
+            .html(`<span style="background-color:${color(key)};width:12px;height:12px;border-radius:4px;display:inline-block;margin-right:5px;"></span> ${key.replace('_Total', '').replace('_', ' ')}`);
+    });
+}
+
+// Vis 1.3: Gini Ratio Horizontal Bar Chart 
+function renderGiniHorizontalChart(container, data) {
+    const sortedData = data.slice().sort((a, b) => b['Gini Ratio'] - a['Gini Ratio']);
+    const highestValue = sortedData[0]['Gini Ratio'];
+
+    const margin = { top: 30, right: 100, bottom: 80, left: 120 };
+    const width = container.node().clientWidth - margin.left - margin.right;
+    const height = 600 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Tooltip dan Popup
+    const tooltip = d3.select("body").append("div")
+        .attr("class", "tooltip")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("padding", "6px")
+        .style("border", "1px solid #999")
+        .style("border-radius", "4px")
+        .style("pointer-events", "none")
+        .style("display", "none")
+        .style("box-shadow", "0px 2px 6px rgba(0,0,0,0.2)");
+
+    const popup = d3.select("body").append("div")
+        .attr("id", "popup")
+        .style("position", "absolute")
+        .style("background", "#ffffff")
+        .style("padding", "8px")
+        .style("border", "1px solid #999")
+        .style("border-radius", "4px")
+        .style("pointer-events", "none")
+        .style("display", "none")
+        .style("box-shadow", "0px 2px 8px rgba(0,0,0,0.25)");
+
+    // Skala
+    const x = d3.scaleLinear()
+        .domain([0, d3.max(sortedData, d => d['Gini Ratio']) * 1.1])
+        .range([0, width]);
+
+    const y = d3.scaleBand()
+        .domain(sortedData.map(d => d.Provinsi))
+        .range([0, height])
+        .padding(0.2);
+
+    // Warna: merah untuk tertinggi, biru untuk sisanya
+    const COLOR_HIGHLIGHT = '#dc2626';
+    const COLOR_BASE = '#1d4ed8';
+
+    // Bar
+    svg.selectAll('.bar')
+        .data(sortedData)
+        .enter()
+        .append('rect')
+        .attr('class', 'bar')
+        .attr('x', x(0))
+        .attr('y', d => y(d.Provinsi))
+        .attr('height', y.bandwidth())
+        .attr('width', d => x(d['Gini Ratio']))
+        .attr('fill', d => d['Gini Ratio'] === highestValue ? COLOR_HIGHLIGHT : COLOR_BASE)
+        .style('cursor', 'pointer')
+        .on('mouseover', function(event, d) {
+            d3.select(this).style('opacity', 0.8);
+            tooltip
+                .style("display", "block")
+                .html(`
+                    <strong>${d.Provinsi}</strong><br/>
+                    Gini Ratio: <strong>${d['Gini Ratio'].toFixed(3)}</strong>
+                `)
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY + 10) + "px");
+        })
+        .on('mousemove', function(event) {
+            tooltip
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY + 10) + "px");
+        })
+        .on('mouseout', function() {
+            d3.select(this).style('opacity', 1);
+            tooltip.style("display", "none");
+        })
+        .on('click', function(event, d) {
+            popup
+                .style("display", "block")
+                .style("left", (event.pageX + 15) + "px")
+                .style("top", (event.pageY + 15) + "px")
+                .html(`
+                    <strong>${d.Provinsi}</strong><br/>
+                    <strong>Gini Ratio:</strong> ${d['Gini Ratio'].toFixed(3)}<br/>
+                    <em>Ranking: ${sortedData.findIndex(x => x.Provinsi === d.Provinsi) + 1} dari ${sortedData.length}</em>
+                `);
+        });
+
+    // Tutup popup kalau klik area luar
+    d3.select("body").on("click", function(event) {
+        if (!event.target.closest("rect")) {
+            popup.style("display", "none");
+        }
+    });
+
+    // X-Axis (Bottom)
+    svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x).ticks(5))
+        .style('font-size', '12px');
+
+    // Y-Axis (Left)
+    svg.append('g')
+        .call(d3.axisLeft(y))
+        .style('font-size', '12px');
+
+    // Label sumbu X
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('transform', `translate(${width / 2},${height + margin.bottom - 5})`)
+        .text('Gini Ratio (0 = Sangat Merata, 1 = Sangat Timpang)')
+        .style('fill', '#0f172a');
+}
+
+
+/* ======================================================================================
+ * 2. PENDIDIKAN 
+ * ====================================================================================== */
+function renderPendidikan(data, filterProv){
+    content.append('h2').text('Pendidikan').style('margin-top','0');
+    const chartWrap = content.append('div').attr('class', 'chart-wrap');
+
+    // 1. Bar Chart: Rata-rata Lama Sekolah vs Angka Harapan Lama Sekolah (Side-by-Side)
+    const chartSekolah = createChartContainer(chartWrap, 'Perbandingan Rata-rata Lama Sekolah dan Angka Harapan Lama Sekolah per Provinsi (Tahun)', 'chart-full').node();
+    renderPendidikanCompareChart(d3.select(chartSekolah), data);
+
+
+    // 2. Bar Chart: Indeks Pembangunan Literasi Masyarakat (Top 10)
+    const chartLiterasi = createChartContainer(chartWrap, 'Indeks Pembangunan Literasi Masyarakat (Top 10 Provinsi Terbaik)', 'chart-full').node();
+    renderLiterasiBarChart(d3.select(chartLiterasi), data);
+}
+
+// Vis 2.1 (Revisi + Pagination): Grouped Bar Chart Sekolah (Vertical) - RLMS vs AHLS
+function renderPendidikanCompareChart(container, data) {
+    const keys = ['Rata-rata Lama Sekolah', 'Angka Harapan Lama Sekolah'];
+    const margin = CHART_MARGINS;
+    const width = container.node().clientWidth - margin.left - margin.right;
+    const height = 500 - margin.top - margin.bottom;
+    const color = d3.scaleOrdinal().domain(keys).range(['#2563eb', '#93c5fd']);
+
+    const sortedData = data.slice().sort((a, b) => b[keys[1]] - a[keys[1]]);
+
+    const itemsPerPage = 10;
+    let currentPage = 0;
+    const totalPages = Math.ceil(sortedData.length / itemsPerPage);
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom);
+
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const xAxisG = g.append('g').attr('transform', `translate(0,${height})`);
+    const yAxisG = g.append('g');
+    const y = d3.scaleLinear().range([height, 0]);
+
+    // --- Render Page Function ---
+    function renderPage(page) {
+        const start = page * itemsPerPage;
+        const pageData = sortedData.slice(start, start + itemsPerPage);
+
+        const x0 = d3.scaleBand()
+            .domain(pageData.map(d => d.Provinsi))
+            .range([0, width])
+            .padding(0.3);
+
+        const x1 = d3.scaleBand()
+            .domain(keys)
+            .range([0, x0.bandwidth()])
+            .padding(0.05);
+
+        y.domain([0, d3.max(pageData, d => Math.max(d[keys[0]], d[keys[1]])) * 1.1]);
+
+        // DATA JOIN
+        const bars = g.selectAll('.bar-group')
+            .data(pageData, d => d.Provinsi);
+
+        // EXIT old bars
+        bars.exit()
+            .transition().duration(300)
+            .style('opacity', 0)
+            .remove();
+
+        // ENTER new bars
+        const barEnter = bars.enter()
+            .append('g')
+            .attr('class', 'bar-group')
+            .attr('transform', d => `translate(${x0(d.Provinsi)},0)`);
+
+        // UPDATE + ENTER bars
+        barEnter.merge(bars)
+            .transition().duration(500)
+            .attr('transform', d => `translate(${x0(d.Provinsi)},0)`);
+
+        barEnter.merge(bars)
+            .selectAll('rect')
+            .data(d => keys.map(key => ({ key, value: d[key], prov: d.Provinsi })))
+            .join('rect')
+            .attr('x', d => x1(d.key))
+            .attr('y', d => y(d.value))
+            .attr('width', x1.bandwidth() * 1.3)
+            .attr('height', d => height - y(d.value))
+            .attr('fill', d => color(d.key))
+            .on('mouseover', function (event, d) {
+                d3.select(this).style('opacity', 0.8);
+                showTooltip(`<strong>${d.prov}</strong><br/>${d.key}: <strong>${formatDecimal(d.value)} Tahun</strong>`, event);
+            })
+            .on('mousemove', moveTooltip)
+            .on('mouseout', function () {
+                d3.select(this).style('opacity', 1);
+                hideTooltip();
+            });
+
+        // Axis Update
+        xAxisG.transition().duration(500)
+            .call(d3.axisBottom(x0))
+            .selectAll('text')
+            .attr('transform', 'rotate(-45)')
+            .style('text-anchor', 'end')
+            .style('font-size', '11px')
+            .style('fill', 'var(--muted)');
+
+        yAxisG.transition().duration(500)
+            .call(d3.axisLeft(y).ticks(8).tickFormat(formatDecimal))
+            .style('font-size', '12px')
+            .style('fill', 'var(--muted)');
+
+        // Update button states
+        prevBtn.property('disabled', currentPage === 0);
+        nextBtn.property('disabled', currentPage === totalPages - 1);
+        pageInfo.text(`Halaman ${currentPage + 1} dari ${totalPages}`);
+    }
+
+    // --- Navigation Buttons ---
+    const navDiv = container.append('div')
+        .attr('class', 'pagination')
+        .style('text-align', 'center')
+        .style('margin-top', '15px');
+
+    const prevBtn = navDiv.append('button')
+        .text('Prev')
+        .on('click', () => {
+            if (currentPage > 0) {
+                currentPage--;
+                renderPage(currentPage);
+            }
+        });
+
+    const pageInfo = navDiv.append('span')
+        .style('margin', '0 10px')
+        .style('color', 'var(--muted)');
+
+    const nextBtn = navDiv.append('button')
+        .text('Next')
+        .on('click', () => {
+            if (currentPage < totalPages - 1) {
+                currentPage++;
+                renderPage(currentPage);
+            }
+        });
+
+    // --- Label & Legend ---
+    g.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('x', -height / 2)
+        .attr('y', -margin.left + 40)
+        .attr('transform', 'rotate(-90)')
+        .text('Durasi Sekolah (Tahun)')
+        .style('fill', '#0f172a')
+        .style('font-size', '13px');
+
+    const legend = container.append('div')
+        .attr('class', 'legend')
+        .style('margin-top', '10px');
+
+    keys.forEach(key => {
+        legend.append('div')
+            .attr('class', 'item')
+            .html(`<span style="background-color:${color(key)};width:12px;height:12px;border-radius:4px;display:inline-block;margin-right:5px;"></span>${key}`);
+    });
+
+    // --- Initial render ---
+    renderPage(currentPage);
+}
+
+
+// Vis 2.2: Indeks Pembangunan Literasi Masyarakat Bar Chart (Horizontal)
+function renderLiterasiBarChart(container, data) {
+    const sortedData = data.slice()
+        .sort((a, b) => b['Indeks Pembangunan Literasi Masyarakat'] - a['Indeks Pembangunan Literasi Masyarakat'])
+        .slice(0, 10); // ambil top 10 tertinggi
+
+    const margin = { top: 20, right: 150, bottom: 40, left: 150 };
+    const width = container.node().clientWidth - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleLinear()
+        .domain([0, 100]) // skala indeks 0-100
+        .range([0, width]);
+
+    const y = d3.scaleBand()
+        .domain(sortedData.map(d => d.Provinsi))
+        .range([0, height])
+        .padding(0.2);
+
+    // Tooltip dan popup
+    const tooltip = d3.select("body").append("div")
+        .attr("class", "tooltip")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("padding", "6px")
+        .style("border", "1px solid #999")
+        .style("border-radius", "4px")
+        .style("pointer-events", "none")
+        .style("display", "none")
+        .style("box-shadow", "0px 2px 6px rgba(0,0,0,0.2)");
+
+    const popup = d3.select("body").append("div")
+        .attr("id", "popup")
+        .style("position", "absolute")
+        .style("background", "#ffffff")
+        .style("padding", "8px")
+        .style("border", "1px solid #999")
+        .style("border-radius", "4px")
+        .style("pointer-events", "none")
+        .style("display", "none")
+        .style("box-shadow", "0px 2px 8px rgba(0,0,0,0.25)");
+
+    // Bar chart
+svg.selectAll('.bar')
+    .data(sortedData)
+    .enter()
+    .append('rect')
+    .attr('class', 'bar')
+    .attr('x', x(0))
+    .attr('y', d => y(d.Provinsi))
+    .attr('height', y.bandwidth())
+    .attr('width', d => x(d['Indeks Pembangunan Literasi Masyarakat']))
+    .attr('fill', d => {
+        const maxValue = d3.max(sortedData, d => d['Indeks Pembangunan Literasi Masyarakat']);
+        return d['Indeks Pembangunan Literasi Masyarakat'] === maxValue ? '#dc2626' : '#1d4ed8'; 
+        // merah (#dc2626) buat nilai tertinggi, biru buat sisanya
+    })
+    .style('cursor', 'pointer')
+    .on('mouseover', function (event, d) {
+        d3.select(this).style('opacity', 0.8);
+        tooltip.style("display", "block")
+            .html(`
+                <strong>${d.Provinsi}</strong><br/>
+                Indeks Literasi: <strong>${d['Indeks Pembangunan Literasi Masyarakat'].toFixed(2)}</strong>
+            `)
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY + 10) + "px");
+    })
+    .on('mousemove', function (event) {
+        tooltip
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY + 10) + "px");
+    })
+    .on('mouseout', function () {
+        d3.select(this).style('opacity', 1);
+        tooltip.style("display", "none");
+    })
+    .on('click', function (event, d) {
+        popup
+            .style("display", "block")
+            .style("left", (event.pageX + 15) + "px")
+            .style("top", (event.pageY + 15) + "px")
+            .html(`
+                <strong>${d.Provinsi}</strong><br/>
+                <strong>Indeks Pembangunan Literasi Masyarakat:</strong> ${d['Indeks Pembangunan Literasi Masyarakat'].toFixed(2)}<br/>
+                <em>Ranking: ${sortedData.findIndex(x => x.Provinsi === d.Provinsi) + 1} dari ${sortedData.length}</em>
+            `);
+    });
+
+    // Tutup popup kalau klik area luar
+    d3.select("body").on("click", function (event) {
+        if (!event.target.closest("rect")) {
+            popup.style("display", "none");
+        }
+    });
+
+    // X-Axis
+    svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x).ticks(5))
+        .style('font-size', '12px');
+
+    // Y-Axis
+    svg.append('g')
+        .call(d3.axisLeft(y))
+        .style('font-size', '12px');
+
+    // Label sumbu X
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('transform', `translate(${width / 2},${height + margin.bottom - 5})`)
+        .text('Indeks Pembangunan Literasi Masyarakat (0–100)')
+        .style('fill', '#0f172a');
+}
+
+
+/* ======================================================================================
+ * 3. KESEHATAN 
+ * ====================================================================================== */
+function renderKesehatan(data, filterProv){
+    content.append('h2').text('Kesehatan').style('margin-top','0');
+    const chartWrap = content.append('div').attr('class', 'chart-wrap');
+
+    // 1. Heatmap Angka Harapan Hidup
+    const chartAHH = createChartContainer(chartWrap, 'Angka Harapan Hidup (Tahun) per Provinsi (Treemap)', 'chart-full').node();
+    renderAHHHeatmap(d3.select(chartAHH), data);
+    
+    // 2. Bar Chart Total Fasilitas Kesehatan
+    const chartFaskes = createChartContainer(chartWrap, 'Perbandingan Fasilitas Kesehatan (Rumah Sakit, Poliklinik, Puskesmas, Puskesmas Pembantu, Apotek.) per Provinsi (Top 10)', 'chart-full').node();
+    renderFaskesBarChart(d3.select(chartFaskes), data);
+}
+
+// Vis 3.1: Heatmap Angka Harapan Hidup (Treemap — ukuran berdasarkan nilai, warna semakin gelap untuk nilai besar)
+function renderAHHHeatmap(container, data) {
+    container.selectAll('*').remove();
+
+    const margin = { top: 10, right: 10, bottom: 10, left: 10 };
+    const width = (container.node().clientWidth || 800) - margin.left - margin.right;
+    const height = 500 - margin.top - margin.bottom;
+
+    if (!data || data.length === 0) {
+        container.append('p')
+            .text('Tidak ada data untuk Angka Harapan Hidup.')
+            .style('text-align','center')
+            .style('color','#666');
+        return;
+    }
+
+    // Ambil top 20 provinsi
+    const top20 = data.slice().sort((a, b) => b['Angka Harapan Hidup'] - a['Angka Harapan Hidup']).slice(0, 20);
+
+    // Skala buatan untuk memperlebar jarak (misal pangkat 3)
+    const minAHH = d3.min(top20, d => +d['Angka Harapan Hidup']);
+    const maxAHH = d3.max(top20, d => +d['Angka Harapan Hidup']);
+    const scaleSize = d3.scalePow().exponent(3).domain([minAHH, maxAHH]).range([1, 1000]); 
+    // exponent=3 → makin besar nilai makin "meledak" ukurannya
+
+    // Hierarki dengan nilai yang sudah di-"stretch"
+    const root = d3.hierarchy({ name: 'root', children: top20 })
+        .sum(d => scaleSize(+d['Angka Harapan Hidup']))
+        .sort((a, b) => b.value - a.value);
+
+    const treemapLayout = d3.treemap()
+        .size([width, height])
+        .paddingInner(4)
+        .round(true);
+
+    treemapLayout(root);
+
+    const colorScale = d3.scaleSequential(d3.interpolateGreens)
+        .domain([minAHH, maxAHH]);
+
+    const fmt = d3.format(".1f");
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const nodes = svg.selectAll('g.node')
+        .data(root.leaves())
+        .join('g')
+        .attr('class', 'node')
+        .attr('transform', d => `translate(${d.x0},${d.y0})`)
+        .on('mouseover', function(event, d){
+            d3.select(this).select('rect').attr('stroke','black').attr('stroke-width',2);
+            showTooltip(`
+                <strong>${d.data.Provinsi}</strong><br/>
+                Angka Harapan Hidup: <strong>${fmt(d.data['Angka Harapan Hidup'])} Tahun</strong>
+            `, event);
+        })
+        .on('mousemove', moveTooltip)
+        .on('mouseout', function(){
+            d3.select(this).select('rect').attr('stroke','none');
+            hideTooltip();
+        });
+
+    nodes.append('rect')
+        .attr('width', d => Math.max(0, d.x1 - d.x0))
+        .attr('height', d => Math.max(0, d.y1 - d.y0))
+        .attr('fill', d => colorScale(d.data['Angka Harapan Hidup']));
+
+    // 6. Tambahkan label dan nilai
+    nodes.each(function(d){
+        const rectWidth = d.x1 - d.x0;
+        const rectHeight = d.y1 - d.y0;
+        const group = d3.select(this);
+
+        if(rectWidth > 35 && rectHeight > 35){
+            group.append("text")
+                .attr("x", rectWidth/2)
+                .attr("y", rectHeight/2 - 6)
+                .attr("text-anchor","middle")
+                .attr("dy","0.35em")
+                .style("font-size","14px")
+                .style("fill","white")
+                .style("font-weight","bold")
+                .text(formatDecimal(d.data['Angka Harapan Hidup']));
+
+            group.append("text")
+                .attr("x", rectWidth/2)
+                .attr("y", rectHeight/2 + 10)
+                .attr("text-anchor","middle")
+                .style("font-size","10px")
+                .style("fill","white")
+                .text(d.data.Provinsi.replace("Kepulauan","K.").split(" ").slice(0,2).join(" "));
+        } else if(rectWidth > 20 && rectHeight > 20){
+            group.append("text")
+                .attr("x", rectWidth/2)
+                .attr("y", rectHeight/2)
+                .attr("text-anchor","middle")
+                .attr("dy","0.35em")
+                .style("font-size","10px")
+                .style("fill","white")
+                .style("font-weight","bold")
+                .text(formatDecimal(d.data['Angka Harapan Hidup']));
+        }
+
+    });
+}
+
+
+// Vis 3.2: Bar Chart Total Fasilitas Kesehatan (Horizontal Bar Chart)
+function renderFaskesBarChart(container, data) {
+    const sortedData = data.slice()
+        .sort((a, b) => b.Total_Fasilitas_Kesehatan - a.Total_Fasilitas_Kesehatan)
+        .slice(0, 10);
+
+    const margin = { top: 20, right: 150, bottom: 40, left: 150 };
+    const width = container.node().clientWidth - margin.left - margin.right;
+    const height = 400 - margin.top - margin.bottom;
+
+    const svg = container.append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const keys = [
+        "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Rumah Sakit",
+        "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Poliklinik",
+        "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas",
+        "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Puskesmas Pembantu",
+        "Desa/Kelurahan Yang Memiliki Sarana Kesehatan - Apotek"
+    ];
+
+    const x = d3.scaleLinear()
+        .domain([0, d3.max(sortedData, d => keys.reduce((sum, k) => sum + d[k], 0)) * 1.1])
+        .range([0, width]);
+
+    const y = d3.scaleBand()
+        .domain(sortedData.map(d => d.Provinsi))
+        .range([0, height])
+        .padding(0.2); // biar bar lebih gendut
+
+    const color = d3.scaleOrdinal()
+        .domain(keys)
+        .range(['#0d47a1','#2e7d32','#4a148c','#fbc02d','#616161']); 
+
+    const stack = d3.stack().keys(keys);
+    const stackedData = stack(sortedData);
+
+    const tooltip = d3.select("body").append("div")
+        .attr("class","tooltip")
+        .style("position","absolute")
+        .style("background","#fff")
+        .style("padding","6px")
+        .style("border","1px solid #999")
+        .style("border-radius","4px")
+        .style("pointer-events","none")
+        .style("display","none");
+
+    const popup = d3.select("body").append("div")
+        .attr("id","popup")
+        .style("position","absolute")
+        .style("background","#ffffff")
+        .style("padding","8px")
+        .style("border","1px solid #999")
+        .style("border-radius","4px")
+        .style("pointer-events","none")
+        .style("display","none")
+        .style("box-shadow","0px 2px 6px rgba(0,0,0,0.2)");
+
+    svg.selectAll('g.layer')
+        .data(stackedData)
+        .enter()
+        .append('g')
+        .attr('class','layer')
+        .attr('fill', d => color(d.key))
+        .selectAll('rect')
+        .data(d => d.map(item => ({...item, key: d.key})))
+        .enter()
+        .append('rect')
+        .attr('y', d => y(d.data.Provinsi))
+        .attr('x', d => x(d[0]))
+        .attr('height', y.bandwidth())
+        .attr('width', d => x(d[1]) - x(d[0]))
+        .on('mouseover', function(event, d){
+            d3.select(this).style('opacity',0.8);
+            tooltip.style("display","block")
+                .html(`
+                    <strong>${d.data.Provinsi}</strong><br/>
+                    ${d.key.replace("Desa/Kelurahan Yang Memiliki Sarana Kesehatan - ","")}: ${d.data[d.key]}<br/>
+                    Total: ${d.data.Total_Fasilitas_Kesehatan}
+                `)
+                .style("left",(event.pageX+10)+"px")
+                .style("top",(event.pageY+10)+"px");
+        })
+        .on('mousemove', function(event){
+            tooltip.style("left",(event.pageX+10)+"px")
+                .style("top",(event.pageY+10)+"px");
+        })
+        .on('mouseout', function(){
+            d3.select(this).style('opacity',1);
+            tooltip.style("display","none");
+        })
+        .on('click', function(event, d){
+            popup.style("display","block")
+                .style("left",(event.pageX+10)+"px")
+                .style("top",(event.pageY+10)+"px")
+                .html(`
+                    <strong>${d.data.Provinsi}</strong><br/>
+                    <strong>${d.key.replace("Desa/Kelurahan Yang Memiliki Sarana Kesehatan - ","")}</strong>: ${d.data[d.key]}<br/>
+                    Total Fasilitas Kesehatan: ${d.data.Total_Fasilitas_Kesehatan}
+                `);
+        });
+
+    // Tutup popup
+    d3.select("body").on("click", function(event){
+        if(!event.target.closest("rect")) {
+            popup.style("display","none");
+        }
+    });
+
+    // X-Axis
+    svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x).ticks(5))
+        .style('font-size','12px');
+
+    // Y-Axis
+    svg.append('g')
+        .call(d3.axisLeft(y))
+        .style('font-size','12px');
+
+    // Label sumbu X
+    svg.append('text')
+        .attr('text-anchor','middle')
+        .attr('transform', `translate(${width/2},${height + margin.bottom - 5})`)
+        .text('Jumlah Fasilitas Kesehatan per Jenis')
+        .style('fill','#0f172a');
+
+    // Legend
+    const legend = svg.append('g')
+        .attr('transform', `translate(${width + 20},0)`);
+
+    keys.forEach((key,i)=>{
+        const g = legend.append('g')
+            .attr('transform', `translate(0, ${i*20})`);
+        g.append('rect')
+            .attr('width',15)
+            .attr('height',15)
+            .attr('fill',color(key));
+        g.append('text')
+            .attr('x',20)
+            .attr('y',12)
+            .text(key.replace("Desa/Kelurahan Yang Memiliki Sarana Kesehatan - ",""))
+            .style('font-size','12px')
+            .style('fill','#0f172a');
+    });
+}
+
+/* ======================================================================================
+ * 4. INFRASTRUKTUR & SANITASI
+ * ====================================================================================== */
+function renderInfrastruktur(data, filterProv) {
+  content.append('h2')
+    .text('Infrastruktur & Sanitasi')
+    .style('margin-top', '0');
+
+  const chartWrap = content.append('div')
+    .attr('class', 'chart-wrap');
+
+  // =========================
+  // 1. CARD RATA-RATA (FULL WIDTH)
+  // =========================
+  const cardWrap = chartWrap.append('div')
+    .attr('class', 'summary-cards')
+    .style('display', 'grid')
+    .style('grid-template-columns', 'repeat(2, 1fr)')
+    .style('gap', '20px')
+    .style('margin', '0 auto 30px auto')
+    .style('width', '100%')
+    .style('max-width', '100%');
+
+  const avgInternet = d3.mean(data, d => d['Akses Internet']);
+  const avgListrik = d3.mean(data, d => d['Akses Listrik']);
+  const avgSanitasi = d3.mean(data, d => d['Persentase Rumah Tangga Sanitasi Layak ']);
+  const avgAir = d3.mean(data, d => d['Persentase Air Bersih']);
+
+  const cards = [
+    { label: 'Rata-rata Persentase Akses Internet', value: avgInternet },
+    { label: 'Rata-rata Persentase Akses Listrik', value: avgListrik },
+    { label: 'Rata-rata Persentase Sanitasi Layak', value: avgSanitasi },
+    { label: 'Rata-rata Persentase Akses Air Bersih', value: avgAir }
+  ];
+
+  cards.forEach(c => {
+    const card = cardWrap.append('div')
+      .style('background', '#fff')
+      .style('border-radius', '12px')
+      .style('padding', '20px')
+      .style('text-align', 'center')
+      .style('width', '100%')
+      .style('box-shadow', '0 2px 6px rgba(0,0,0,0.05)');
+
+    card.append('h3')
+      .text(c.label)
+      .style('font-size', '13px')
+      .style('color', '#6b7280')
+      .style('margin', '0 0 6px 0')
+      .style('font-weight', '400');
+
+    card.append('p')
+      .text(`${formatDecimal(c.value)}%`)
+      .style('font-size', '22px')
+      .style('font-weight', '700')
+      .style('color', '#2563eb')
+      .style('margin', '0');
+  });
+
+  // =========================
+  // 2. COMPARE BAR 
+  // =========================
+  const compareContainer = createChartContainer(
+    chartWrap,
+    'Perbandingan Antar Indikator Infrastruktur (%)',
+    'chart-full'
+  ).node();
+
+  renderCompareInfrastruktur(d3.select(compareContainer), data);
+}
+
+// Grafik Compare Bar
+function renderCompareInfrastruktur(container, data) {
+  const keys = [
+    'Akses Internet',
+    'Akses Listrik',
+    'Persentase Rumah Tangga Sanitasi Layak ',
+    'Persentase Air Bersih'
+  ];
+  const colors = ['#0d9488', '#3b82f6', '#22c55e', '#f59e0b'];
+  const margin = { top: 20, right: 20, bottom: 60, left: 100 };
+  const width = container.node().clientWidth - margin.left - margin.right;
+  const height = 400 - margin.top - margin.bottom;
+
+  const sortedData = data.slice().sort((a, b) => {
+    const avgA = (a['Akses Internet'] + a['Akses Listrik'] + a['Persentase Rumah Tangga Sanitasi Layak '] + a['Persentase Air Bersih']) / 4;
+    const avgB = (b['Akses Internet'] + b['Akses Listrik'] + b['Persentase Rumah Tangga Sanitasi Layak '] + b['Persentase Air Bersih']) / 4;
+    return avgB - avgA;
+  });
+
+  let currentPage = 0;
+  const pageSize = 5;
+  const totalPages = Math.ceil(sortedData.length / pageSize);
+
+  const svg = container.append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+    .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleBand().range([0, width]).padding(0.2);
+  const y = d3.scaleLinear().domain([0, 100]).range([height, 0]);
+  const color = d3.scaleOrdinal().domain(keys).range(colors);
+
+  const xAxis = svg.append('g').attr('transform', `translate(0,${height})`);
+  const yAxis = svg.append('g');
+
+  // Tooltip styled ala Faskes Chart
+  const tooltip = d3.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("position", "absolute")
+    .style("background", "#fff")
+    .style("padding", "8px 12px")
+    .style("border", "1px solid #ccc")
+    .style("border-radius", "8px")
+    .style("box-shadow", "0px 3px 8px rgba(0,0,0,0.15)")
+    .style("font-size", "13px")
+    .style("color", "#111")
+    .style("pointer-events", "none")
+    .style("display", "none");
+
+  const legend = container.append('div')
+    .style('margin-top', '10px');
+
+  keys.forEach((k, i) => {
+    legend.append('div')
+      .style('display', 'inline-block')
+      .style('margin-right', '15px')
+      .html(`<span style="background:${colors[i]};width:12px;height:12px;display:inline-block;border-radius:3px;margin-right:5px;"></span>${k}`);
+  });
+
+  const nav = container.append('div')
+    .style('display', 'flex')
+    .style('justify-content', 'center')
+    .style('gap', '10px')
+    .style('margin-top', '10px');
+
+  const btnPrev = nav.append('button').text('Prev');
+  const btnNext = nav.append('button').text('Next');
+
+  function updateChart() {
+    const start = currentPage * pageSize;
+    const pageData = sortedData.slice(start, start + pageSize);
+
+    const grouped = pageData.map(d => ({
+      Provinsi: d.Provinsi,
+      values: keys.map(k => ({ key: k, value: d[k], provinsi: d.Provinsi }))
+    }));
+
+    x.domain(grouped.map(d => d.Provinsi));
+
+    const group = svg.selectAll('.group')
+      .data(grouped, d => d.Provinsi);
+
+    const groupEnter = group.enter().append('g')
+      .attr('class', 'group')
+      .attr('transform', d => `translate(${x(d.Provinsi)},0)`);
+
+    groupEnter.merge(group)
+      .transition()
+      .duration(600)
+      .attr('transform', d => `translate(${x(d.Provinsi)},0)`);
+
+    group.exit().remove();
+
+    // ==== BATANG ====
+    const bars = groupEnter.merge(group)
+      .selectAll('rect')
+      .data(d => d.values, d => d.key);
+
+    bars.enter().append('rect')
+      .merge(bars)
+      .attr('x', (d, i) => i * (x.bandwidth() / keys.length))
+      .attr('width', x.bandwidth() / keys.length)
+      .attr('y', d => y(d.value))
+      .attr('height', d => height - y(d.value))
+      .attr('fill', d => color(d.key))
+      .on('mouseover', function(event, d) {
+        d3.select(this).style('opacity', 0.8);
+        tooltip
+          .style("display", "block")
+          .html(`
+            <strong>${d.provinsi}</strong><br/>
+            ${d.key}: <b>${formatDecimal(d.value)}%</b>
+          `)
+          .style("left", (event.pageX + 12) + "px")
+          .style("top", (event.pageY - 20) + "px");
+      })
+      .on('mousemove', function(event) {
+        tooltip
+          .style("left", (event.pageX + 12) + "px")
+          .style("top", (event.pageY - 20) + "px");
+      })
+      .on('mouseout', function() {
+        d3.select(this).style('opacity', 1);
+        tooltip.style("display", "none");
+      });
+
+    bars.exit().remove();
+
+    // LABEL DI ATAS BAR 
+    const labels = groupEnter.merge(group)
+      .selectAll('.bar-label')
+      .data(d => d.values, d => d.key);
+
+    labels.enter()
+      .append('text')
+      .attr('class', 'bar-label')
+      .merge(labels)
+      .attr('x', (d, i) => i * (x.bandwidth() / keys.length) + (x.bandwidth() / keys.length) / 2)
+      .attr('y', d => y(d.value) - 5)
+      .attr('text-anchor', 'middle')
+      .style('font-size', '11px')
+      .style('fill', '#333')
+      .text(d => `${formatDecimal(d.value)}%`);
+
+    labels.exit().remove();
+
+    xAxis.call(d3.axisBottom(x))
+      .selectAll('text')
+      .style('text-anchor', 'end')
+      .attr('transform', 'rotate(-20)')
+      .style('font-size', '12px');
+
+    yAxis.call(d3.axisLeft(y).ticks(5).tickFormat(d => d + '%'));
+  }
+
+  btnPrev.on('click', () => {
+    if (currentPage > 0) {
+      currentPage--;
+      updateChart();
+    }
+  });
+
+  btnNext.on('click', () => {
+    if (currentPage < totalPages - 1) {
+      currentPage++;
+      updateChart();
+    }
+  });
+
+  updateChart();
+}
+
+/* ======================================================================================
+ * 5. PEMBANGUNAN MANUSIA (PETA GEOJSON INTERAKTIF)
+ * ====================================================================================== */
+function renderPembangunanManusia(data, filterProv) {
+    // Judul besar di tengah
+    content.append('h2')
+        .text('Indeks Pembangunan Manusia (IPM)')
+        .style('margin-top', '0');
+
+    // Card untuk peta
+    const mapCard = content.append('div')
+        .attr('class', 'card chart-full')
+        .style('padding', '15px')
+        .style('background', '#f9fafb')
+        .style('border-radius', '12px')
+        .style('box-shadow', '0 4px 12px rgba(0,0,0,0.1)');
+
+    mapCard.append('h3')
+        .text('Peta Persebaran IPM per Provinsi')
+        .style('text-align', 'center')
+        .style('font-size', '20px')
+        .style('color', '#065f46') // hijau gelap
+        .style('margin-bottom', '15px');
+
+    const chartDiv = mapCard.append('div')
+        .attr('id', 'ipm-map')
+        .style('width', '100%')
+        .style('height', '600px')
+        .style('border-radius', '12px')
+        .style('overflow', 'hidden');
+
+    const tooltip = d3.select("body").append("div")
+        .attr("class", "tooltip")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("padding", "10px 12px")
+        .style("border", "1px solid #999")
+        .style("border-radius", "8px")
+        .style("pointer-events", "none")
+        .style("display", "none")
+        .style("font-size", "14px")
+        .style("box-shadow", "0px 3px 10px rgba(0,0,0,0.3)");
+
+    function getIpmColor(value) {
+        if (value <= 60) return '#dc2626';   // merah lebih pekat
+        if (value < 70) return '#f97316';    // oranye lebih cerah
+        if (value < 80) return '#eab308';    // kuning lebih jelas
+        return '#16a34a';                    // hijau lebih segar
+    }
+
+    const provinsiMapping = {
+        "Kepulauan Bangka Belitung": "BANGKA BELITUNG",
+        "Aceh": "DI. ACEH",
+        "DI Yogyakarta": "DAERAH ISTIMEWA YOGYAKARTA",
+        "Nusa Tenggara Barat": "NUSATENGGARA BARAT",
+        "Kepulauan Riau": "KEPULAUAN RIAU",
+        "Banten": "PROBANTEN",
+        "Papua Barat": "IRIAN JAYA BARAT",
+        "Papua Tengah": "IRIAN JAYA TENGAH",
+        "Papua Selatan": "IRIAN JAYA TIMUR",
+        "Papua": "PAPUA",
+        "Papua Pegunungan": "PAPUA PEGUNUNGAN"
+    };
+
+    const width = chartDiv.node().clientWidth;
+    const height = 600;
+
+    const svg = chartDiv.append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+    const projection = d3.geoMercator()
+        .center([118, -2])
+        .scale(1200)
+        .translate([width / 2, height / 1.5]);
+
+    const path = d3.geoPath().projection(projection);
+
+    d3.json("https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia-province.json")
+        .then(function (geoData) {
+            geoData.features.forEach(f => {
+                const geoProv = f.properties.Propinsi.toLowerCase();
+                const match = data.find(d => {
+                    const mappedName = provinsiMapping[d.Provinsi] || d.Provinsi;
+                    return mappedName.toLowerCase() === geoProv;
+                });
+                f.properties.ipm = match ? +match['Indeks Pembangunan Manusia'] : null;
+            });
+
+            svg.selectAll('path')
+                .data(geoData.features)
+                .enter()
+                .append('path')
+                .attr('d', path)
+                .attr('fill', d => {
+                    const val = d.properties.ipm;
+                    return val ? getIpmColor(val) : '#d9d9d9'; // abu-abu terang untuk provinsi tanpa data
+                })
+                .attr('stroke', '#ffffff')
+                .attr('stroke-width', 1)
+                .style('cursor', 'pointer')
+                .on('mouseover', function (event, d) {
+                    d3.select(this).style('opacity', 0.85);
+                    const val = d.properties.ipm;
+                    tooltip
+                        .style("display", "block")
+                        .html(val ? 
+                            `<strong>${d.properties.Propinsi}</strong><br/>IPM: <strong>${val.toFixed(2)}</strong><br/><span style="color:${getIpmColor(val)};font-weight:600;">${val <= 60 ? 'Rendah' : val < 70 ? 'Sedang' : val < 80 ? 'Tinggi' : 'Sangat Tinggi'}</span>` :
+                            `<strong>${d.properties.Propinsi}</strong><br/>Data IPM tidak tersedia`
+                        )
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY + 10) + "px");
+                })
+                .on('mousemove', function (event) {
+                    tooltip.style("left", (event.pageX + 10) + "px")
+                           .style("top", (event.pageY + 10) + "px");
+                })
+                .on('mouseout', function () {
+                    d3.select(this).style('opacity', 1);
+                    tooltip.style("display", "none");
+                })
+                .on('click', function (event, d) {
+                    const val = d.properties.ipm;
+                    alert(val ? 
+                        `${d.properties.Propinsi}\nIPM: ${val.toFixed(2)}\nKategori: ${val <= 60 ? 'Rendah' : val < 70 ? 'Sedang' : val < 80 ? 'Tinggi' : 'Sangat Tinggi'}` :
+                        `${d.properties.Propinsi}\nData IPM tidak tersedia`
+                    );
+                });
+
+            // Legenda di atas kiri
+            const legend = svg.append('g')
+                .attr('class', 'legend')
+                .attr('transform', `translate(20,20)`);
+
+            const categories = [
+                { label: 'IPM Rendah (≤ 60)', color: '#dc2626' },
+                { label: 'IPM Sedang (60–69)', color: '#f97316' },
+                { label: 'IPM Tinggi (70–79)', color: '#eab308' },
+                { label: 'IPM Sangat Tinggi (≥ 80)', color: '#16a34a' },
+            ];
+
+            legend.selectAll('rect')
+                .data(categories)
+                .enter()
+                .append('rect')
+                .attr('x', 0)
+                .attr('y', (d, i) => i * 28)
+                .attr('width', 20)
+                .attr('height', 20)
+                .attr('fill', d => d.color)
+                .attr('rx', 4);
+
+            legend.selectAll('text')
+                .data(categories)
+                .enter()
+                .append('text')
+                .attr('x', 28)
+                .attr('y', (d, i) => i * 28 + 16)
+                .text(d => d.label)
+                .style('font-size', '14px')
+                .style('fill', '#0f172a')
+                .style('font-weight', '600');
+        });
+}
+
+
+/* ======================================================================================
+ * 6. KATEGORI PROVINSI 
+ * ====================================================================================== */
+function renderKategoriProvinsi(data) {
+    content.append('h2')
+        .text('Kategori Provinsi (Clustering)')
+        .style('margin-top', '0');
+
+    const allData = data.slice();
+    const clusterCounts = d3.rollup(allData, v => v.length, d => d.Cluster);
+    const clusterData = Array.from(clusterCounts, ([key, value]) => ({
+        cluster: +key,
+        count: value
+    })).sort((a, b) => a.cluster - b.cluster);
+
+    // Mapping cluster ke label kategori
+    const clusterLabels = {
+        0: "Menengah",
+        1: "Menengah Rendah",
+        2: "Sangat Rendah",
+        3: "Tinggi",
+        4: "Sangat Tinggi",
+        5: "Menengah Tinggi",
+        6: "Rendah"
+    };
+
+    // Warna cluster (rendah → tinggi)
+function getClusterColor(cluster) {
+    const colors = [
+        '#86efac',
+        '#facc15',  
+        '#ef4444', 
+        '#22c55e', 
+        '#3b82f6', 
+        '#06b6d4', 
+        '#f97316'
+    ];
+    return colors[cluster] || '#d1d5db'; // abu-abu untuk cluster di luar range
+}
+
+    /* ======================================================
+     * 1️⃣ KPI CARD
+     * ====================================================== */
+    const statsCard = content.append('div')
+        .attr('class', 'card')
+        .style('margin-bottom', '20px');
+
+    statsCard.append('h3').text('Ringkasan Clustering');
+    const statsRow = statsCard.append('div')
+        .style('display', 'flex')
+        .style('gap', '12px')
+        .style('flex-wrap', 'wrap');
+
+    statsRow.append('div')
+        .attr('class', 'data-card')
+        .html(`<div class="value">${clusterData.length}</div><div class="label">Jumlah Cluster (0–6)</div>`);
+
+    statsRow.append('div')
+        .attr('class', 'data-card')
+        .html(`<div class="value">${allData.length}</div><div class="label">Jumlah Provinsi Total</div>`);
+
+    /* ======================================================
+     * 2️⃣ PETA PERSEBARAN CLUSTER
+     * ====================================================== */
+    renderClusterMap(allData, clusterLabels, getClusterColor);
+
+    /* ======================================================
+     * 3️⃣ PIE CHART JUMLAH CLUSTER
+     * ====================================================== */
+    const chartWrap = content.append('div').attr('class', 'chart-wrap');
+    const chartPie = createChartContainer(
+        chartWrap,
+        'Distribusi Jumlah Provinsi per Cluster (Klik untuk Detail Provinsi)',
+        'chart-full'
+    ).node();
+
+    renderClusterPieChart(d3.select(chartPie), clusterData, allData, clusterLabels, getClusterColor);
+}
+
+/* ======================================================
+ * PIE CHART FUNGSI (DENGAN TOOLTIP PROVINSI)
+ * ====================================================== */
+function renderClusterPieChart(container, clusterData, allData, clusterLabels, getClusterColor) {
+    const tooltip = d3.select("body").append("div")
+        .attr("class", "tooltip-pie")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("padding", "10px")
+        .style("border", "1px solid #ccc")
+        .style("border-radius", "8px")
+        .style("display", "none")
+        .style("font-size", "13px")
+        .style("max-width", "300px")
+        .style("box-shadow", "0 4px 12px rgba(0,0,0,0.2)");
+
+    const width = container.node().clientWidth;
+    const height = 400;
+    const radius = Math.min(width, height) / 2 - 20;
+
+    const svg = container.append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+        .attr("transform", `translate(${width / 2}, ${height / 2})`);
+
+    const pie = d3.pie().value(d => d.count).sort(null);
+    const arc = d3.arc().innerRadius(0).outerRadius(radius);
+
+    svg.selectAll("path")
+        .data(pie(clusterData))
+        .enter()
+        .append("path")
+        .attr("d", arc)
+        .attr("fill", d => getClusterColor(d.data.cluster))
+        .on("mouseover", (event, d) => {
+            const cluster = d.data.cluster;
+            const label = clusterLabels[cluster];
+            const provinces = allData
+                .filter(p => +p.Cluster === cluster)
+                .map(p => p.Provinsi)
+                .join(", ");
+            tooltip.style("display", "block").html(`
+                <strong>Cluster ${cluster} – ${label}</strong><br/>
+                Jumlah Provinsi: ${d.data.count}<br/>
+                <div style="margin-top:6px; font-size:12px; line-height:1.4;">
+                <strong>Daftar:</strong> ${provinces}
+                </div>
+            `);
+        })
+        .on("mousemove", event => {
+            tooltip.style("left", (event.pageX + 10) + "px")
+                   .style("top", (event.pageY + 10) + "px");
+        })
+        .on("mouseout", () => tooltip.style("display", "none"));
+
+    svg.selectAll("text")
+        .data(pie(clusterData))
+        .enter()
+        .append("text")
+        .attr("transform", d => `translate(${arc.centroid(d)})`)
+        .attr("text-anchor", "middle")
+        .style("fill", "white")
+        .style("font-weight", "600")
+        .style("font-size", "13px")
+        .text(d => `C${d.data.cluster}`);
+}
+
+/* ======================================================
+ * FUNGSI PETA CLUSTER INDONESIA (DENGAN PEMETAAN NAMA)
+ * ====================================================== */
+function renderClusterMap(allData, clusterLabels, getClusterColor) {
+    content.append('h2')
+        .text('Peta Persebaran Cluster Provinsi (FCM)')
+        .style('margin-top', '0');
+
+    const mapCard = content.append('div')
+        .attr('class', 'card chart-full')
+        .style('padding', '15px')
+        .style('background', '#f9fafb')
+        .style('border-radius', '12px')
+        .style('box-shadow', '0 4px 12px rgba(0,0,0,0.1)');
+
+    mapCard.append('h3')
+        .text('Distribusi Cluster berdasarkan Hasil FCM')
+        .style('text-align', 'center')
+        .style('font-size', '20px')
+        .style('color', '#065f46')
+        .style('margin-bottom', '15px');
+
+    const chartDiv = mapCard.append('div')
+        .attr('id', 'cluster-map')
+        .style('width', '100%')
+        .style('height', '600px')
+        .style('border-radius', '12px')
+        .style('overflow', 'hidden');
+
+    const tooltip = d3.select("body").append("div")
+        .attr("class", "tooltip")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("padding", "10px 12px")
+        .style("border", "1px solid #999")
+        .style("border-radius", "8px")
+        .style("pointer-events", "none")
+        .style("display", "none")
+        .style("font-size", "14px")
+        .style("box-shadow", "0px 3px 10px rgba(0,0,0,0.3)");
+
+    const width = chartDiv.node().clientWidth;
+    const height = 600;
+    const svg = chartDiv.append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+    const projection = d3.geoMercator()
+        .center([118, -2])
+        .scale(1200)
+        .translate([width / 2, height / 1.5]);
+
+    const path = d3.geoPath().projection(projection);
+
+    // 🗺️ Mapping manual nama provinsi agar cocok dengan GeoJSON
+    const provinsiMapping = {
+        "Kepulauan Bangka Belitung": "BANGKA BELITUNG",
+        "Aceh": "DI. ACEH",
+        "DI Yogyakarta": "DAERAH ISTIMEWA YOGYAKARTA",
+        "Nusa Tenggara Barat": "NUSATENGGARA BARAT",
+        "Kepulauan Riau": "KEPULAUAN RIAU",
+        "Banten": "PROBANTEN",
+        "Papua Barat": "IRIAN JAYA BARAT",
+        "Papua Tengah": "IRIAN JAYA TENGAH",
+        "Papua Selatan": "IRIAN JAYA TIMUR",
+        "Papua": "PAPUA",
+        "Papua Pegunungan": "PAPUA PEGUNUNGAN"
+    };
+
+    d3.json("https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia-province.json")
+        .then(function (geoData) {
+            geoData.features.forEach(f => {
+                const geoProv = f.properties.Propinsi.toLowerCase();
+                // cari match di data
+                let match = allData.find(d => d.Provinsi.toLowerCase() === geoProv);
+
+                // kalau tidak ketemu, cek mapping
+                if (!match) {
+                    const altName = Object.entries(provinsiMapping)
+                        .find(([k, v]) => v.toLowerCase() === f.properties.Propinsi.toLowerCase());
+                    if (altName) {
+                        const mapped = allData.find(d => d.Provinsi.toLowerCase() === altName[0].toLowerCase());
+                        match = mapped;
+                    }
+                }
+
+                if (match) {
+                    f.properties.cluster = +match.Cluster;
+                    f.properties.label = clusterLabels[+match.Cluster];
+                } else {
+                    f.properties.cluster = null;
+                    f.properties.label = "Tidak Dikenali";
+                }
+            });
+
+            svg.selectAll('path')
+                .data(geoData.features)
+                .enter()
+                .append('path')
+                .attr('d', path)
+                .attr('fill', d => {
+                    const cluster = d.properties.cluster;
+                    return cluster != null ? getClusterColor(cluster) : '#d9d9d9';
+                })
+                .attr('stroke', '#fff')
+                .attr('stroke-width', 1)
+                .style('cursor', 'pointer')
+                .on('mouseover', function (event, d) {
+                    d3.select(this).style('opacity', 0.85);
+                    const c = d.properties.cluster;
+                    tooltip.style("display", "block").html(
+                        c != null ? `<strong>${d.properties.Propinsi}</strong><br/>Cluster: <strong>${c}</strong><br/>Label: ${d.properties.label}`
+                        : `<strong>${d.properties.Propinsi}</strong><br/>Data cluster tidak tersedia`
+                    )
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY + 10) + "px");
+                })
+                .on('mousemove', event => {
+                    tooltip.style("left", (event.pageX + 10) + "px")
+                           .style("top", (event.pageY + 10) + "px");
+                })
+                .on('mouseout', function () {
+                    d3.select(this).style('opacity', 1);
+                    tooltip.style("display", "none");
+                });
+
+            // Legenda warna
+            const clusters = Array.from(new Set(allData.map(d => +d.Cluster))).sort((a, b) => a - b);
+            const legend = svg.append('g')
+                .attr('transform', `translate(20,20)`);
+
+            legend.selectAll('rect')
+                .data(clusters)
+                .enter()
+                .append('rect')
+                .attr('x', 0)
+                .attr('y', (d, i) => i * 28)
+                .attr('width', 20)
+                .attr('height', 20)
+                .attr('rx', 4)
+                .attr('fill', d => getClusterColor(d));
+
+            legend.selectAll('text')
+                .data(clusters)
+                .enter()
+                .append('text')
+                .attr('x', 28)
+                .attr('y', (d, i) => i * 28 + 16)
+                .text(d => `Cluster ${d} – ${clusterLabels[d]}`)
+                .style('font-size', '14px')
+                .style('fill', '#0f172a')
+                .style('font-weight', '600');
+        });
+}
+
+
+/* ======================================================================================
+    7. UTILITY FUNCTIONS 
+    ====================================================================================== */
+
+// Shared Top 10 Table function
+function renderTop10Table(container, data, key, formatter) {
+    const sortedData = data.slice().sort((a, b) => b[key] - a[key]).slice(0, 10);
+    const table = container.append('table');
+    const thead = table.append('thead');
+    const tbody = table.append('tbody');
+
+    const unit = key.includes('Sekolah') || key.includes('Hidup') ? ' Tahun' : (key.includes('Literasi') ? '' : '%');
+
+    thead.append('tr')
+        .html(`<th>Peringkat</th><th>Provinsi</th><th>${key}${unit ? '' : ''}</th><th>Cluster</th>`);
+
+    tbody.selectAll('tr')
+        .data(sortedData)
+        .enter()
+        .append('tr')
+        .attr('class', (d, i) => `cluster-${d.Cluster}`)
+        .html((d, i) => `
+            <td>${i + 1}</td>
+            <td><strong>${d.Provinsi}</strong></td>
+            <td>${formatter(d[key])}${unit}</td>
+            <td>${d.Cluster}</td>
+        `);
+}
+</script>
+</body>
+</html>
